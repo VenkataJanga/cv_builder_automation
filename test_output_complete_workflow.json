@@ -1,0 +1,140 @@
+{
+  "status": "completed",
+  "steps_completed": [
+    "fallback_extraction",
+    "deduplication",
+    "section_detection",
+    "schema_mapping",
+    "rag_normalization",
+    "gap_detection",
+    "auto_suggestions",
+    "final_validation"
+  ],
+  "cv_data": {
+    "personal_details": {
+      "full_name": "Client-facing Resume Template",
+      "total_experience_years": 3.0
+    },
+    "summary": {
+      "professional_summary": "3+ Years of experience in supporting and developing Java/Spring boot web applications. Experienced in Java application enhancement and production support, and end to end issues resolution for eight java applications. Skilled in Monitoring logs, jobs, and database connections, and improving application stability. Developed new features and Optimized SQL queries to enhance web application performance and functionality. Worked vulnerability fixes and migration tasks. Proficient in using Cherwell to"
+    },
+    "skills": {
+      "technical_skills": [],
+      "soft_skills": [],
+      "domains": []
+    },
+    "experience": [],
+    "project_experience": [],
+    "education": [],
+    "certifications": [],
+    "publications": [],
+    "awards": [],
+    "languages": [],
+    "leadership": {}
+  },
+  "metadata": {
+    "extraction_method": "Fallback",
+    "sections_detected": {
+      "present_sections": [
+        "personal_details",
+        "summary"
+      ],
+      "missing_sections": [
+        "skills",
+        "experience",
+        "project_experience",
+        "education",
+        "certifications",
+        "publications",
+        "awards",
+        "languages"
+      ],
+      "section_completeness": 20.0
+    },
+    "total_steps": 8
+  },
+  "validation": {
+    "schema_validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        "Missing recommended field: personal_details.email"
+      ]
+    },
+    "gaps": {
+      "missing_required_fields": [
+        "personal_details.email",
+        "skills.technical_skills"
+      ],
+      "missing_recommended_fields": [
+        "personal_details.phone",
+        "experience",
+        "education"
+      ],
+      "gaps_detected": 5
+    },
+    "final_validation": {
+      "ready_for_preview": false,
+      "blocking_issues": [
+        "Email is required"
+      ],
+      "warnings": [
+        "CV appears incomplete. Consider adding more sections.",
+        "CV quality score is below 50. Consider improving content quality."
+      ],
+      "completeness_percentage": 20.0
+    }
+  },
+  "suggestions": {
+    "field_suggestions": [
+      {
+        "field": "personal_details.email",
+        "type": "required",
+        "suggestion": "Please provide your personal_details.email",
+        "priority": "high"
+      },
+      {
+        "field": "skills.technical_skills",
+        "type": "required",
+        "suggestion": "Please provide your skills.technical_skills",
+        "priority": "high"
+      },
+      {
+        "field": "personal_details.phone",
+        "type": "recommended",
+        "suggestion": "Consider adding personal_details.phone to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "experience",
+        "type": "recommended",
+        "suggestion": "Consider adding experience to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "education",
+        "type": "recommended",
+        "suggestion": "Consider adding education to strengthen your CV",
+        "priority": "medium"
+      }
+    ],
+    "content_suggestions": [
+      {
+        "section": "skills",
+        "suggestion": "You have only 0 technical skills listed. Consider adding more relevant skills"
+      },
+      {
+        "section": "certifications",
+        "suggestion": "Consider adding relevant certifications to strengthen your profile"
+      }
+    ],
+    "priority_actions": [
+      "Add personal_details.email",
+      "Add skills.technical_skills"
+    ]
+  },
+  "errors": [],
+  "warnings": [
+    "AI extraction unavailable, using basic extraction"
+  ]
+}

@@ -1,0 +1,300 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f4f7fb;
+  color: #1c2430;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #0f172a;
+  color: #fff;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.brand p {
+  margin: 4px 0 0;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.brand-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: #2563eb;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.sidebar-card {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.sidebar-card h2 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.sidebar-card ol {
+  margin: 0;
+  padding-left: 18px;
+  color: #dbe4f0;
+  line-height: 1.7;
+}
+
+.sidebar input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  margin-bottom: 10px;
+}
+
+.main-content {
+  padding: 24px;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+  border-radius: 20px;
+  padding: 22px 24px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+  margin-bottom: 20px;
+}
+
+.hero h2 {
+  margin: 0 0 6px;
+}
+
+.hero p {
+  margin: 0;
+  color: #5b6473;
+}
+
+.session-box {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  padding: 12px 16px;
+  min-width: 240px;
+}
+
+.session-box span {
+  display: block;
+  font-size: 12px;
+  color: #5b6473;
+  margin-bottom: 4px;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 20px;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.06);
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.chat-panel {
+  grid-row: span 3;
+}
+
+.chat-messages {
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  min-height: 420px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 14px;
+  background: #f8fafc;
+}
+
+.message {
+  max-width: 80%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.message.bot {
+  background: #dbeafe;
+  margin-right: auto;
+}
+
+.message.user {
+  background: #dcfce7;
+  margin-left: auto;
+}
+
+.chat-input-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.chat-input-row input {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+}
+
+.upload-form {
+  display: grid;
+  gap: 12px;
+}
+
+.primary-btn,
+.secondary-btn {
+  border: none;
+  border-radius: 12px;
+  padding: 11px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.primary-btn {
+  background: #2563eb;
+  color: white;
+}
+
+.primary-btn:hover {
+  background: #1d4ed8;
+}
+
+.secondary-btn {
+  background: #e2e8f0;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.secondary-btn:hover {
+  background: #cbd5e1;
+}
+
+.secondary-btn:last-child {
+  margin-bottom: 0;
+}
+
+.json-box {
+  background: #0f172a;
+  color: #dbeafe;
+  padding: 14px;
+  border-radius: 16px;
+  min-height: 220px;
+  overflow: auto;
+  font-size: 13px;
+}
+
+.status-pill {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-pill.success {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-pill.neutral {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.hint {
+  margin-top: 12px;
+  color: #5b6473;
+  font-size: 13px;
+}
+
+@media (max-width: 1100px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-panel {
+    grid-row: auto;
+  }
+
+  .chat-input-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chat-input-row input {
+  flex: 1;
+}
+
+.primary-button,
+.secondary-button {
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+}
+
+.secondary-button {
+  background-color: #eeeeee;
+}
+
+.primary-button {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+}

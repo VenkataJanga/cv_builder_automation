@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>MVP1 Chat Tester</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 760px; margin: 2rem auto; }
+    #chat { border: 1px solid #ccc; padding: 1rem; min-height: 200px; }
+    .bubble { padding: .6rem; margin: .4rem 0; border-radius: .5rem; max-width: 80%; }
+    .user { background: #ddf; align-self: flex-end; }
+    .bot { background: #f2f2f2; align-self: flex-start; }
+    .row { display: flex; flex-direction: column; }
+  </style>
+</head>
+<body>
+  <h1>MVP1 Chat Tester</h1>
+  <div id="chat" class="row"></div>
+  <div>
+    <input id="message" type="text" style="width: 74%;" placeholder="Type a message" />
+    <button id="send">Send</button>
+  </div>
+  <script src="./chat.js"></script>
+</body>
+</html>

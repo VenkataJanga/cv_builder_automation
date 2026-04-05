@@ -1,0 +1,19 @@
+title_mapping:
+  technical_manager:
+    - technical manager
+    - engineering manager
+    - solution architect
+
+  project_manager:
+    - project manager
+    - program manager
+    - scrum master
+
+  senior_team_lead:
+    - team lead
+    - senior team lead
+    - tech lead
+
+  general:
+    - developer
+    - engineer

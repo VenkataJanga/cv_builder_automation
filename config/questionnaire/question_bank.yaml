@@ -1,0 +1,31 @@
+sections:
+  common_baseline:
+    questions:
+      - id: q0
+        text: What is your full name?
+
+      - id: q1
+        text: What is your current location?
+
+      - id: q2
+        text: How would you describe your professional profile in 2–3 lines?
+
+      - id: q3
+        text: What is your total years of experience?
+
+      - id: q4
+        text: What is your current organization?
+
+      - id: q5
+        text: What are your key skills?
+
+  leadership_impact:
+    questions:
+      - id: q6
+        text: Have you led teams? If yes, what was the team size?
+
+      - id: q7
+        text: What are your key leadership achievements?
+
+      - id: q8
+        text: What business outcomes have you delivered?

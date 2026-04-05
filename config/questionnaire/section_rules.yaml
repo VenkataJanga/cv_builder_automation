@@ -1,0 +1,14 @@
+role_sections:
+  technical_manager:
+    - common_baseline
+    - leadership_impact
+
+  project_manager:
+    - common_baseline
+    - leadership_impact
+
+  senior_team_lead:
+    - common_baseline
+
+  general:
+    - common_baseline

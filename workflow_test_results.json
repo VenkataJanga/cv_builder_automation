@@ -1,0 +1,273 @@
+{
+  "status": "completed",
+  "file_info": {
+    "file_path": "data/storage/54dbc8c7-0b38-46f9-9655-65e5f301fc9c_Sanjay_Resume.docx",
+    "original_filename": "54dbc8c7-0b38-46f9-9655-65e5f301fc9c_Sanjay_Resume.docx"
+  },
+  "extraction": {
+    "method": "Fallback",
+    "steps_completed": [
+      "fallback_extraction",
+      "section_detection",
+      "schema_mapping",
+      "rag_normalization",
+      "gap_detection",
+      "auto_suggestions",
+      "final_validation"
+    ],
+    "warnings": [
+      "AI extraction unavailable, using basic extraction"
+    ],
+    "errors": []
+  },
+  "cv_data": {
+    "personal_details": {
+      "full_name": "Client-facing Resume Template",
+      "phone": "+1-234-567-8900",
+      "linkedin": "https://linkedin.com/in/testuser"
+    },
+    "summary": {},
+    "skills": {
+      "technical_skills": [
+        "Java",
+        "Angular",
+        "Spring",
+        "Microservices"
+      ],
+      "soft_skills": []
+    },
+    "experience": [],
+    "education": [],
+    "certifications": [],
+    "publications": [],
+    "awards": [],
+    "languages": []
+  },
+  "sections_detected": {
+    "present_sections": [
+      "personal_details",
+      "skills"
+    ],
+    "missing_sections": [
+      "summary",
+      "experience",
+      "project_experience",
+      "education",
+      "certifications",
+      "publications",
+      "awards",
+      "languages"
+    ],
+    "section_completeness": 20.0
+  },
+  "validation": {
+    "schema_validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": [
+        "Missing recommended field: personal_details.email"
+      ]
+    },
+    "gaps": {
+      "missing_required_fields": [
+        "personal_details.email"
+      ],
+      "missing_recommended_fields": [
+        "summary.professional_summary",
+        "experience",
+        "education"
+      ],
+      "gaps_detected": 4
+    },
+    "final_validation": {
+      "ready_for_preview": false,
+      "blocking_issues": [
+        "Email is required"
+      ],
+      "warnings": [
+        "CV appears incomplete. Consider adding more sections.",
+        "CV quality score is below 50. Consider improving content quality."
+      ],
+      "completeness_percentage": 20.0
+    }
+  },
+  "suggestions": {
+    "field_suggestions": [
+      {
+        "field": "personal_details.email",
+        "type": "required",
+        "suggestion": "Please provide your personal_details.email",
+        "priority": "high"
+      },
+      {
+        "field": "personal_details.phone",
+        "type": "recommended",
+        "suggestion": "Consider adding personal_details.phone to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "summary.professional_summary",
+        "type": "recommended",
+        "suggestion": "Consider adding summary.professional_summary to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "experience",
+        "type": "recommended",
+        "suggestion": "Consider adding experience to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "education",
+        "type": "recommended",
+        "suggestion": "Consider adding education to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "professional_summary",
+        "type": "required",
+        "suggestion": "Add a compelling professional summary highlighting your key strengths and experience",
+        "priority": "high"
+      }
+    ],
+    "content_suggestions": [
+      {
+        "section": "skills",
+        "suggestion": "You have only 4 technical skills listed. Consider adding more relevant skills"
+      },
+      {
+        "section": "certifications",
+        "suggestion": "Consider adding relevant certifications to strengthen your profile"
+      }
+    ],
+    "priority_actions": [
+      "Add personal_details.email",
+      "Add a professional summary (2-3 sentences)"
+    ]
+  },
+  "preview": {
+    "preview_ready": true,
+    "formatted_cv": {
+      "sections": [
+        {
+          "name": "Personal Details",
+          "type": "personal",
+          "data": {
+            "full_name": "Client-facing Resume Template",
+            "phone": "+1-234-567-8900",
+            "linkedin": "https://linkedin.com/in/testuser"
+          },
+          "editable": true
+        },
+        {
+          "name": "Skills",
+          "type": "skills",
+          "data": {
+            "technical_skills": [
+              "Java",
+              "Angular",
+              "Spring",
+              "Microservices"
+            ],
+            "soft_skills": []
+          },
+          "editable": true
+        }
+      ]
+    },
+    "metadata": {},
+    "suggestions": {
+      "field_suggestions": [
+        {
+          "field": "personal_details.email",
+          "type": "required",
+          "suggestion": "Please provide your personal_details.email",
+          "priority": "high"
+        },
+        {
+          "field": "personal_details.phone",
+          "type": "recommended",
+          "suggestion": "Consider adding personal_details.phone to strengthen your CV",
+          "priority": "medium"
+        },
+        {
+          "field": "summary.professional_summary",
+          "type": "recommended",
+          "suggestion": "Consider adding summary.professional_summary to strengthen your CV",
+          "priority": "medium"
+        },
+        {
+          "field": "experience",
+          "type": "recommended",
+          "suggestion": "Consider adding experience to strengthen your CV",
+          "priority": "medium"
+        },
+        {
+          "field": "education",
+          "type": "recommended",
+          "suggestion": "Consider adding education to strengthen your CV",
+          "priority": "medium"
+        },
+        {
+          "field": "professional_summary",
+          "type": "required",
+          "suggestion": "Add a compelling professional summary highlighting your key strengths and experience",
+          "priority": "high"
+        }
+      ],
+      "content_suggestions": [
+        {
+          "section": "skills",
+          "suggestion": "You have only 4 technical skills listed. Consider adding more relevant skills"
+        },
+        {
+          "section": "certifications",
+          "suggestion": "Consider adding relevant certifications to strengthen your profile"
+        }
+      ],
+      "priority_actions": [
+        "Add personal_details.email",
+        "Add a professional summary (2-3 sentences)"
+      ]
+    },
+    "validation": {
+      "schema_validation": {
+        "valid": true,
+        "errors": [],
+        "warnings": [
+          "Missing recommended field: personal_details.email"
+        ]
+      },
+      "gaps": {
+        "missing_required_fields": [
+          "personal_details.email"
+        ],
+        "missing_recommended_fields": [
+          "summary.professional_summary",
+          "experience",
+          "education"
+        ],
+        "gaps_detected": 4
+      },
+      "final_validation": {
+        "ready_for_preview": false,
+        "blocking_issues": [
+          "Email is required"
+        ],
+        "warnings": [
+          "CV appears incomplete. Consider adding more sections.",
+          "CV quality score is below 50. Consider improving content quality."
+        ],
+        "completeness_percentage": 20.0
+      }
+    }
+  },
+  "edit_history": [
+    {
+      "timestamp": "now",
+      "sections_edited": [
+        "personal_details"
+      ]
+    }
+  ]
+}

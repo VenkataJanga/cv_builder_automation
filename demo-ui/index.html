@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conversational CV Builder Demo</title>
+  <link rel="stylesheet" href="/static/styles.css?v=3" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-badge">CV</div>
+        <div>
+          <h1>Conversational CV Builder</h1>
+          <p>MVP 2 Demo</p>
+        </div>
+      </div>
+
+      <div class="sidebar-card">
+        <h2>Demo Flow</h2>
+        <ol>
+          <li>Start session</li>
+          <li>Answer role-based questions</li>
+          <li>See follow-up questions</li>
+          <li>Build structured CV</li>
+          <li>Validate and preview</li>
+          <li>Upload existing CV</li>
+          <li>Export output</li>
+        </ol>
+      </div>
+
+      <div class="sidebar-card">
+        <h2>API Base URL</h2>
+        <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
+        <button id="saveBaseUrlBtn" class="secondary-btn">Save URL</button>
+      </div>
+
+      <div class="sidebar-card">
+        <h2>Quick Actions</h2>
+        <button id="startSessionBtn" class="primary-btn">Start Session</button>
+        <button id="getPreviewBtn" class="secondary-btn">Get Preview</button>
+        <button id="getValidationBtn" class="secondary-btn">Get Validation</button>
+        <button id="getContextBtn" class="secondary-btn">Get Retrieval Context</button>
+        <button id="downloadDocxBtn" class="secondary-btn">Export DOCX</button>
+        <button id="downloadPdfBtn" class="secondary-btn">Export PDF</button>
+        <button id="resetSessionBtn" class="secondary-btn">Reset Demo</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="hero">
+        <div>
+          <h2>Leadership Demo Console</h2>
+          <p>Use this UI to demonstrate chatbot flow, dynamic follow-ups, structured CV, upload, validation, preview, retrieval, and export.</p>
+        </div>
+        <div class="session-box">
+          <span>Session ID</span>
+          <strong id="sessionIdLabel">Not started</strong>
+        </div>
+      </header>
+
+      <section class="content-grid">
+        <section class="panel chat-panel">
+          <div class="panel-header">
+            <h3>Chatbot Flow</h3>
+            <span class="status-pill" id="chatStatus">Idle</span>
+          </div>
+
+          <div id="chatMessages" class="chat-messages"></div>
+
+         <form id="answerForm" class="chat-input-row">
+            <input
+              id="answerInput"
+              type="text"
+              placeholder="Type your answer or use the mic..."
+            />
+            <button
+              type="button"
+              id="voiceBtn"
+              class="secondary-button"
+              title="Speak your answer"
+            >
+              🎤
+            </button>
+            <button type="submit" class="primary-button">Send</button>
+        </form>
+
+        </section>
+
+        <section class="panel upload-panel">
+          <div class="panel-header">
+            <h3>Upload Existing CV</h3>
+            <span class="status-pill neutral">MVP 1 Advanced</span>
+          </div>
+
+          <form id="uploadForm" class="upload-form">
+            <input id="cvFile" type="file" accept=".pdf,.docx,.doc" />
+            <button type="submit" class="primary-btn">Upload and Merge</button>
+          </form>
+
+          <div class="hint">
+            Upload an existing CV to auto-fill fields into the current session. Supports: .doc, .docx, .pdf
+          </div>
+        </section>
+
+        <section class="panel preview-panel">
+          <div class="panel-header">
+            <h3>Structured CV Preview</h3>
+            <span class="status-pill success">Live</span>
+          </div>
+          <pre id="previewBox" class="json-box">{}</pre>
+        </section>
+
+        <section class="panel validation-panel">
+          <div class="panel-header">
+            <h3>Validation / API Response</h3>
+            <span class="status-pill neutral">API Output</span>
+          </div>
+          <pre id="responseBox" class="json-box">{}</pre>
+        </section>
+
+        <section class="panel validation-panel">
+          <div class="panel-header">
+            <h3>Retrieved Context</h3>
+            <span class="status-pill neutral">RAG Lite</span>
+          </div>
+          <pre id="contextBox" class="json-box">[]</pre>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/app.js?v=3"></script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+{
+  "parsed_data": {
+    "personal_information": {
+      "full_name": "Venkata Kiran Kumar Janga",
+      "portal_id": "229164",
+      "grade": "10",
+      "contact_number": "9881248765",
+      "email": "venkata.janga@nttdata.com",
+      "current_location": "",
+      "designation": ""
+    },
+    "professional_summary": {
+      "total_experience_years": 16,
+      "summary": "i have been 16 years of experience in the it industry for developing, deploying and operational support for enterprise grade applications using java, python, pyspark, databricks, aws and azure cloud services, developed web-based and enterprise-based applications"
+    },
+    "skills": {
+      "primary_skills": [
+        "Java",
+        "Spring Boot And Microservices"
+      ],
+      "secondary_skills": [
+        "Python",
+        "Lanchain",
+        "Langroth",
+        "Numpy",
+        "Pandas",
+        "Pyspark",
+        "Databricks"
+      ],
+      "ai_frameworks": [],
+      "cloud_platforms": [
+        "AWS",
+        "Azure"
+      ],
+      "operating_systems": [],
+      "databases": []
+    }
+  },
+  "preview_data": {
+    "header": {
+      "full_name": "Venkata Kiran Kumar Janga",
+      "current_title": "",
+      "location": "",
+      "current_organization": "",
+      "total_experience": "16 years",
+      "target_role": "",
+      "email": "venkata.janga@nttdata.com",
+      "employee_id": "229164",
+      "contact_number": "9881248765",
+      "grade": "10"
+    },
+    "summary": "i have been 16 years of experience in the it industry for developing, deploying and operational support for enterprise grade applications using java, python, pyspark, databricks, aws and azure cloud services, developed web-based and enterprise-based applications.",
+    "skills": [
+      "Java",
+      "Spring Boot And Microservices"
+    ],
+    "secondary_skills": [
+      "Python",
+      "Lanchain",
+      "Langroth",
+      "Numpy",
+      "Pandas"
+    ]
+  },
+  "export_sizes": {
+    "docx_bytes": 37077,
+    "pdf_bytes": 2830
+  }
+}

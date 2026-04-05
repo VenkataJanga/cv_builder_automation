@@ -1,0 +1,137 @@
+{
+  "status": "completed",
+  "steps_completed": [
+    "ai_extraction",
+    "deduplication",
+    "section_detection",
+    "schema_mapping",
+    "rag_normalization",
+    "gap_detection",
+    "auto_suggestions",
+    "quality_assessment",
+    "final_validation"
+  ],
+  "cv_data": {
+    "personal_details": {
+      "full_name": "John Doe",
+      "email": "john.doe@example.com",
+      "phone": "+1-234-567-8900",
+      "total_experience": 10.0,
+      "linkedin": "https://linkedin.com/in/johndoe"
+    },
+    "summary": {},
+    "skills": {},
+    "experience": [],
+    "project_experience": [],
+    "education": [],
+    "certifications": [],
+    "publications": [],
+    "awards": [],
+    "languages": []
+  },
+  "metadata": {
+    "extraction_method": "AI",
+    "sections_detected": {
+      "present_sections": [
+        "personal_details"
+      ],
+      "missing_sections": [
+        "summary",
+        "skills",
+        "experience",
+        "project_experience",
+        "education",
+        "certifications",
+        "publications",
+        "awards",
+        "languages"
+      ],
+      "section_completeness": 10.0
+    },
+    "total_steps": 9
+  },
+  "validation": {
+    "schema_validation": {
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    "gaps": {
+      "missing_required_fields": [
+        "Professional Summary"
+      ],
+      "missing_recommended_fields": [
+        "Work Experience",
+        "Education",
+        "Technical Skills"
+      ],
+      "incomplete_sections": [],
+      "suggestions": [
+        "Please provide: Professional Summary",
+        "Consider adding: Work Experience, Education, Technical Skills"
+      ]
+    },
+    "quality_assessment": {
+      "overall_score": 0,
+      "error": "Connection error."
+    },
+    "final_validation": {
+      "ready_for_preview": true,
+      "blocking_issues": [],
+      "warnings": [
+        "CV appears incomplete. Consider adding more sections.",
+        "CV quality score is below 50. Consider improving content quality."
+      ],
+      "completeness_percentage": 10.0
+    }
+  },
+  "suggestions": {
+    "field_suggestions": [
+      {
+        "field": "Professional Summary",
+        "type": "required",
+        "suggestion": "Please provide your Professional Summary",
+        "priority": "high"
+      },
+      {
+        "field": "Work Experience",
+        "type": "recommended",
+        "suggestion": "Consider adding Work Experience to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "Education",
+        "type": "recommended",
+        "suggestion": "Consider adding Education to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "Technical Skills",
+        "type": "recommended",
+        "suggestion": "Consider adding Technical Skills to strengthen your CV",
+        "priority": "medium"
+      },
+      {
+        "field": "professional_summary",
+        "type": "required",
+        "suggestion": "Add a compelling professional summary highlighting your key strengths and experience",
+        "priority": "high"
+      }
+    ],
+    "content_suggestions": [
+      {
+        "section": "skills",
+        "suggestion": "You have only 0 technical skills listed. Consider adding more relevant skills"
+      },
+      {
+        "section": "certifications",
+        "suggestion": "Consider adding relevant certifications to strengthen your profile"
+      }
+    ],
+    "priority_actions": [
+      "Add Professional Summary",
+      "Add a professional summary (2-3 sentences)"
+    ]
+  },
+  "errors": []
+}
