@@ -109,6 +109,140 @@ class PdfRenderer:
             for line in context.get("leadership_lines", []):
                 for part in self._split_text(f"- {line}", 95):
                     write_line(part)
+        
+        # Leadership dictionary format
+        leadership = context.get("leadership", {})
+        if leadership:
+            write_line("")
+            write_line("Leadership & Impact", "Helvetica-Bold", 12, 18)
+            for category, items in leadership.items():
+                if items:
+                    category_title = category.replace("_", " ").title()
+                    write_line(f"{category_title}:", "Helvetica-Bold", 11, 16)
+                    for item in items:
+                        for part in self._split_text(f"  • {item}", 93):
+                            write_line(part)
+        
+        if context.get("work_experience"):
+            write_line("")
+            write_line("Work Experience", "Helvetica-Bold", 12, 18)
+            for exp in context.get("work_experience", []):
+                if isinstance(exp, dict):
+                    title = exp.get("title", "")
+                    company = exp.get("company", "")
+                    duration = exp.get("duration", "")
+                    if title or company:
+                        write_line(f"{title} at {company}", "Helvetica-Bold", 11, 16)
+                    if duration:
+                        write_line(f"Duration: {duration}")
+                    if exp.get("responsibilities"):
+                        for resp in exp.get("responsibilities", []):
+                            for part in self._split_text(f"  • {resp}", 93):
+                                write_line(part)
+                    write_line("")
+                else:
+                    for part in self._split_text(f"• {exp}", 95):
+                        write_line(part)
+        
+        if context.get("project_experience"):
+            write_line("")
+            write_line("Project Experience", "Helvetica-Bold", 12, 18)
+            for proj in context.get("project_experience", []):
+                if isinstance(proj, dict):
+                    name = proj.get("project_name", "")
+                    role = proj.get("role", "")
+                    client = proj.get("client", "")
+                    duration = proj.get("duration", "")
+                    if name:
+                        write_line(name, "Helvetica-Bold", 11, 16)
+                    if role:
+                        write_line(f"Role: {role}")
+                    if client:
+                        write_line(f"Client: {client}")
+                    if duration:
+                        write_line(f"Duration: {duration}")
+                    if proj.get("description"):
+                        for part in self._split_text(proj.get("description"), 95):
+                            write_line(part)
+                    if proj.get("technologies"):
+                        techs = ", ".join(proj.get("technologies", []))
+                        for part in self._split_text(f"Technologies: {techs}", 95):
+                            write_line(part)
+                    write_line("")
+                else:
+                    for part in self._split_text(f"• {proj}", 95):
+                        write_line(part)
+        
+        certifications = context.get("certifications") or context.get("certifications_and_trainings", [])
+        if certifications:
+            write_line("")
+            write_line("Certifications & Training", "Helvetica-Bold", 12, 18)
+            for cert in certifications:
+                if isinstance(cert, dict):
+                    name = cert.get("name", "")
+                    issuer = cert.get("issuer", "")
+                    year = cert.get("year", "")
+                    if name:
+                        cert_text = name
+                        if issuer:
+                            cert_text += f" - {issuer}"
+                        if year:
+                            cert_text += f" ({year})"
+                        for part in self._split_text(f"• {cert_text}", 95):
+                            write_line(part)
+                else:
+                    for part in self._split_text(f"• {cert}", 95):
+                        write_line(part)
+        
+        if context.get("education"):
+            write_line("")
+            write_line("Education", "Helvetica-Bold", 12, 18)
+            for edu in context.get("education", []):
+                if isinstance(edu, dict):
+                    degree = edu.get("degree", "")
+                    institution = edu.get("institution", "")
+                    year = edu.get("year", "")
+                    if degree or institution:
+                        edu_text = degree
+                        if institution:
+                            edu_text += f" from {institution}" if degree else institution
+                        if year:
+                            edu_text += f" ({year})"
+                        for part in self._split_text(f"• {edu_text}", 95):
+                            write_line(part)
+                else:
+                    for part in self._split_text(f"• {edu}", 95):
+                        write_line(part)
+        
+        if context.get("publications"):
+            write_line("")
+            write_line("Publications", "Helvetica-Bold", 12, 18)
+            for pub in context.get("publications", []):
+                for part in self._split_text(f"• {pub}", 95):
+                    write_line(part)
+        
+        if context.get("awards"):
+            write_line("")
+            write_line("Awards & Recognition", "Helvetica-Bold", 12, 18)
+            for award in context.get("awards", []):
+                for part in self._split_text(f"• {award}", 95):
+                    write_line(part)
+        
+        if context.get("languages"):
+            write_line("")
+            write_line("Languages", "Helvetica-Bold", 12, 18)
+            langs = context.get("languages", [])
+            if isinstance(langs, list):
+                for lang in langs:
+                    if isinstance(lang, dict):
+                        name = lang.get("name", "")
+                        level = lang.get("proficiency", "")
+                        lang_text = name
+                        if level:
+                            lang_text += f" - {level}"
+                        write_line(f"• {lang_text}")
+                    else:
+                        write_line(f"• {lang}")
 
         pdf.save()
         buffer.seek(0)

@@ -7,5 +7,5 @@ class ContextualRetriever:
     def __init__(self, store: FAISSStore | None = None) -> None:
         self.store = store or FAISSStore()
 
-    def retrieve(self, query: str) -> List[Dict]:
-        return self.store.search(query=query, top_k=3)
+    def retrieve(self, query: str, top_k: int = 3) -> List[Dict]:
+        return self.store.search(query=query, top_k=top_k)

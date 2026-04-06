@@ -6,7 +6,8 @@ from uuid import uuid4
 from src.application.services.cv_builder_service import CVBuilderService
 from src.application.services.retrieval_service import RetrievalService
 from src.application.services.validation_service import ValidationService
-from src.ai.agents.enhancement_agent import EnhancementAgent
+from src.ai.services.llm_enhancement_service import LLMEnhancementService
+from src.ai.services.langsmith_service import LangSmithService
 from src.questionnaire.answer_analyzer import AnswerAnalyzer
 from src.questionnaire.followup_engine import FollowupEngine
 from src.questionnaire.question_selector import select_questions
@@ -21,9 +22,10 @@ class ConversationService:
         self.cv_builder_service = CVBuilderService()
         self.answer_analyzer = AnswerAnalyzer()
         self.followup_engine = FollowupEngine()
-        self.enhancement_agent = EnhancementAgent()
         self.retrieval_service = RetrievalService()
         self.validation_service = ValidationService()
+        self.enhancement_service = LLMEnhancementService()
+        self.langsmith_service = LangSmithService()
 
     def start_session(self) -> Dict[str, Any]:
         session_id = str(uuid4())
@@ -57,25 +59,18 @@ class ConversationService:
             session["current_index"] = 0
             session["cv_data"] = self.cv_builder_service.apply_role_seed(session["cv_data"], answer)
 
-            if not questions:
-                return {
-                    "session_id": session_id,
-                    "message": "No questions found for this role",
-                    "cv_data": session["cv_data"],
-                }
-
             return {
                 "session_id": session_id,
                 "resolved_role": role,
-                "question": questions[0],
+                "question": questions[0] if questions else "No questions found for this role",
                 "cv_data": session["cv_data"],
             }
 
         if session["step"] == "questions":
             idx = session["current_index"]
             questions = session["questions"]
-
             current_question = questions[idx]
+
             session["answers"][current_question] = answer
             session["cv_data"] = self.cv_builder_service.update_from_answer(
                 session["cv_data"],
@@ -83,17 +78,32 @@ class ConversationService:
                 answer,
             )
 
-            if "professional profile" in current_question.lower():
-                summary = session["cv_data"].get("summary", {}).get("professional_summary", "")
-                session["cv_data"].setdefault("summary", {})
-                session["cv_data"]["summary"]["professional_summary"] = self.enhancement_agent.enhance_summary(summary)
+            role = session.get("role")
+            # LLM should only be used for transcript enhancement, not CV data enhancement
+            # CV data updates remain deterministic through cv_builder_service
 
-            analysis = self.answer_analyzer.analyze(current_question, answer)
-            followup = self.followup_engine.generate_followup(current_question, answer) if analysis["needs_followup"] else None
+            analysis = self.answer_analyzer.analyze(current_question, answer, cv_data=session["cv_data"])
+            context = self.retrieval_service.get_context(current_question, top_k=3)
+            validation = self.validation_service.validate(session["cv_data"])
+            followup = self.followup_engine.generate_followup(
+                current_question,
+                answer,
+                role=role,
+                analysis=analysis,
+                cv_data=session["cv_data"],
+            )
+
+            trace = self.langsmith_service.trace(
+                "conversation_submit_answer",
+                {
+                    "session_id": session_id,
+                    "question": current_question,
+                    "role": role,
+                    "analysis": analysis,
+                },
+            )
 
             built_schema = self.cv_builder_service.try_build_schema(session["cv_data"])
-            validation = self.validation_service.validate(session["cv_data"])
-            context = self.retrieval_service.get_context(current_question)
 
             if followup:
                 return {
@@ -103,6 +113,8 @@ class ConversationService:
                     "cv_schema_ready": built_schema is not None,
                     "validation": validation,
                     "retrieved_context": context,
+                    "confidence": validation.get("confidence", {}),
+                    "trace": trace,
                 }
 
             session["current_index"] += 1
@@ -116,6 +128,8 @@ class ConversationService:
                     "cv_schema_ready": built_schema is not None,
                     "validation": validation,
                     "retrieved_context": context,
+                    "confidence": validation.get("confidence", {}),
+                    "trace": trace,
                 }
 
             next_question = questions[session["current_index"]]
@@ -126,6 +140,8 @@ class ConversationService:
                 "cv_schema_ready": built_schema is not None,
                 "validation": validation,
                 "retrieved_context": context,
+                "confidence": validation.get("confidence", {}),
+                "trace": trace,
             }
 
         return {"message": "Invalid state"}

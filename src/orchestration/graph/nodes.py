@@ -1,0 +1,11 @@
+class WorkflowNodes:
+    START = "start"
+    DETECT_ROLE = "detect_role"
+    ASK_QUESTION = "ask_question"
+    ANALYZE_ANSWER = "analyze_answer"
+    RETRIEVE_CONTEXT = "retrieve_context"
+    ENHANCE_CONTENT = "enhance_content"
+    VALIDATE = "validate"
+    FOLLOWUP = "followup"
+    PREVIEW = "preview"
+    END = "end"

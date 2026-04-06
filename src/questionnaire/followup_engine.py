@@ -1,23 +1,35 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 class FollowupEngine:
-    def generate_followup(self, question: str, answer: str) -> Optional[str]:
+    def generate_followup(
+        self,
+        question: str,
+        answer: str,
+        role: str | None = None,
+        analysis: Dict[str, Any] | None = None,
+        cv_data: dict | None = None,
+    ) -> Optional[str]:
         q = question.lower().strip()
-        a = answer.strip()
+        analysis = analysis or {}
+        answer = answer.strip()
 
-        if not a:
+        if not answer:
             return "Could you please provide more details?"
 
-        if "experience" in q and len(a.split()) < 2:
-            return "Can you provide a bit more detail about your experience?"
-        if "skills" in q and len(a.split(",")) < 2:
-            return "Can you list a few more skills or tools you have worked with?"
-        if "leadership achievements" in q and len(a.split()) < 5:
-            return "Can you share one specific leadership achievement with measurable impact?"
-        if "business outcomes" in q and len(a.split()) < 5:
-            return "What was the measurable business impact or outcome?"
-        if "professional profile" in q and len(a.split()) < 8:
-            return "Can you make that summary a little more detailed in 2–3 lines?"
+        if "professional profile" in q and analysis.get("is_short"):
+            return "Can you expand that summary into 2–3 formal lines including your role focus and strengths?"
+
+        if "skills" in q and analysis.get("is_short"):
+            return "Please add more skills, tools, platforms, and frameworks relevant to your role."
+
+        if "leadership achievements" in q and not analysis.get("has_metric"):
+            return "Can you quantify that achievement with impact, percentage improvement, savings, or delivery result?"
+
+        if "business outcomes" in q and not analysis.get("has_metric"):
+            return "What measurable business result did this create, such as efficiency, savings, quality, or delivery improvement?"
+
+        if role == "technical_manager" and "projects" in q and analysis.get("is_vague"):
+            return "Can you describe the system type, technologies used, and your exact technical leadership role?"
 
         return None

@@ -10,12 +10,13 @@ class RetrievalService:
 
     def _seed_defaults(self) -> None:
         defaults = [
-            {"content": "Best practice: summaries should be concise, role-aligned, and impact-focused."},
-            {"content": "Best practice: skills should include languages, frameworks, cloud, and tools."},
-            {"content": "Best practice: achievements should mention measurable business outcomes where possible."},
-            {"content": "Best practice: voice transcripts should be confirmed by the user before final submission."},
+            {"content": "Summaries should be concise, role-aligned, and impact-focused."},
+            {"content": "Leadership bullets should mention measurable outcomes, team size, and scope."},
+            {"content": "Skills should include platforms, frameworks, tools, and domain strengths."},
+            {"content": "Business outcomes should mention savings, efficiency, quality, revenue, or delivery improvements."},
+            {"content": "Voice transcripts should be corrected by the user before final submission if confidence is low."},
         ]
         self.retriever.store.add_documents(defaults)
 
-    def get_context(self, query: str):
-        return self.retriever.retrieve(query)
+    def get_context(self, query: str, top_k: int = 3) -> List[Dict]:
+        return self.retriever.retrieve(query, top_k=top_k)

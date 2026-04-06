@@ -10,9 +10,17 @@ class FAISSStore:
 
     def search(self, query: str, top_k: int = 3) -> List[Dict]:
         query_lower = query.lower()
-        results = []
+        scored = []
         for doc in self._documents:
             content = str(doc.get("content", "")).lower()
-            if query_lower in content:
-                results.append(doc)
-        return results[:top_k]
+            score = 0
+            for token in query_lower.split():
+                if token in content:
+                    score += 1
+            if score > 0:
+                scored.append({
+                    "content": doc.get("content", ""),
+                    "score": score,
+                })
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        return scored[:top_k]

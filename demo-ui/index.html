@@ -1,136 +1,157 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Conversational CV Builder Demo</title>
-  <link rel="stylesheet" href="/static/styles.css?v=3" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV Builder Automation</title>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-badge">CV</div>
-        <div>
-          <h1>Conversational CV Builder</h1>
-          <p>MVP 2 Demo</p>
+    <div class="container">
+        <header>
+            <h1>🤖 CV Builder Automation</h1>
+            <p>Build your professional CV through conversation, document upload, or voice interaction</p>
+        </header>
+
+        <main class="main-grid">
+            <!-- Session Management -->
+            <div class="section session-section">
+                <h2>Session Management</h2>
+                <div class="session-controls">
+                    <input type="text" id="sessionId" placeholder="Enter session ID or leave blank for new session">
+                    <button id="createSession" class="btn btn-primary">Create New Session</button>
+                    <button id="loadSession" class="btn btn-secondary">Load Session</button>
+                </div>
+                <div id="currentSession" class="current-session"></div>
+            </div>
+
+            <!-- File Upload Section -->
+            <div class="section upload-section">
+                <h2>📄 Document Upload</h2>
+                <div class="upload-area" id="documentUpload">
+                    <div class="upload-content">
+                        <div class="upload-icon">📁</div>
+                        <p>Drag & drop PDF or DOCX files here</p>
+                        <p>or <button class="btn-link" id="browseFiles">browse files</button></p>
+                        <input type="file" id="fileInput" accept=".pdf,.docx" hidden>
+                    </div>
+                </div>
+                <div id="uploadProgress" class="progress-bar" style="display: none;">
+                    <div class="progress-fill"></div>
+                </div>
+                <div id="uploadResult" class="result-area"></div>
+            </div>
+
+            <!-- Audio Section -->
+            <div class="section audio-section">
+                <h2>🎤 Voice Interaction</h2>
+                <div class="audio-controls">
+                    <div class="record-section">
+                        <button id="recordBtn" class="btn btn-record">
+                            <span class="record-icon">🔴</span>
+                            Start Recording
+                        </button>
+                        <div id="recordingStatus" class="recording-status"></div>
+                        <audio id="audioPlayback" controls style="display: none;"></audio>
+                    </div>
+                    <div class="upload-audio-section">
+                        <h3>Or upload audio file</h3>
+                        <div class="audio-upload-area" id="audioUpload">
+                            <div class="upload-content">
+                                <div class="upload-icon">🎵</div>
+                                <p>Drag & drop audio files here</p>
+                                <p>or <button class="btn-link" id="browseAudioFiles">browse audio files</button></p>
+                                <input type="file" id="audioFileInput" accept=".mp3,.wav,.webm,.m4a,.ogg" hidden>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="audioProgress" class="progress-bar" style="display: none;">
+                    <div class="progress-fill"></div>
+                </div>
+                <div id="transcriptionResult" class="result-area"></div>
+            </div>
+
+            <!-- Chat Interface -->
+            <div class="section chat-section">
+                <h2>💬 Conversation</h2>
+                <div id="chatContainer" class="chat-container">
+                    <div id="chatMessages" class="chat-messages">
+                        <div class="message bot-message">
+                            <div class="message-content">
+                                Hello! I'm here to help you build your CV. You can:
+                                <ul>
+                                    <li>Upload your existing CV (PDF/DOCX)</li>
+                                    <li>Record yourself talking about your experience</li>
+                                    <li>Chat with me to build your CV step by step</li>
+                                </ul>
+                                How would you like to start?
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-area">
+                        <div class="input-group">
+                            <input type="text" id="chatInput" placeholder="Type your message here..." maxlength="1000">
+                            <button id="sendChatBtn" class="btn btn-send">Send</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CV Preview -->
+            <div class="section preview-section">
+                <h2>👁️ CV Preview</h2>
+                <div class="preview-controls">
+                    <button id="refreshPreview" class="btn btn-secondary">Refresh Preview</button>
+                    <button id="exportCV" class="btn btn-success">Export CV</button>
+                </div>
+                <div id="cvPreview" class="cv-preview">
+                    <div class="preview-placeholder">
+                        <p>Your CV data will appear here as you build it</p>
+                        <p>Upload a document, record audio, or start chatting to begin</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">Server:</span>
+                <span id="serverStatus" class="status-value">Checking...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Session:</span>
+                <span id="sessionStatus" class="status-value">No active session</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Last Update:</span>
+                <span id="lastUpdate" class="status-value">Never</span>
+            </div>
         </div>
-      </div>
 
-      <div class="sidebar-card">
-        <h2>Demo Flow</h2>
-        <ol>
-          <li>Start session</li>
-          <li>Answer role-based questions</li>
-          <li>See follow-up questions</li>
-          <li>Build structured CV</li>
-          <li>Validate and preview</li>
-          <li>Upload existing CV</li>
-          <li>Export output</li>
-        </ol>
-      </div>
-
-      <div class="sidebar-card">
-        <h2>API Base URL</h2>
-        <input id="apiBaseUrl" type="text" value="http://127.0.0.1:8000" />
-        <button id="saveBaseUrlBtn" class="secondary-btn">Save URL</button>
-      </div>
-
-      <div class="sidebar-card">
-        <h2>Quick Actions</h2>
-        <button id="startSessionBtn" class="primary-btn">Start Session</button>
-        <button id="getPreviewBtn" class="secondary-btn">Get Preview</button>
-        <button id="getValidationBtn" class="secondary-btn">Get Validation</button>
-        <button id="getContextBtn" class="secondary-btn">Get Retrieval Context</button>
-        <button id="downloadDocxBtn" class="secondary-btn">Export DOCX</button>
-        <button id="downloadPdfBtn" class="secondary-btn">Export PDF</button>
-        <button id="resetSessionBtn" class="secondary-btn">Reset Demo</button>
-      </div>
-    </aside>
-
-    <main class="main-content">
-      <header class="hero">
-        <div>
-          <h2>Leadership Demo Console</h2>
-          <p>Use this UI to demonstrate chatbot flow, dynamic follow-ups, structured CV, upload, validation, preview, retrieval, and export.</p>
+        <!-- Export Modal -->
+        <div id="exportModal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Export CV</h3>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="export-options">
+                        <button class="btn btn-export" data-format="pdf">Export as PDF</button>
+                        <button class="btn btn-export" data-format="docx">Export as DOCX</button>
+                        <button class="btn btn-export" data-format="json">Export as JSON</button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="session-box">
-          <span>Session ID</span>
-          <strong id="sessionIdLabel">Not started</strong>
-        </div>
-      </header>
 
-      <section class="content-grid">
-        <section class="panel chat-panel">
-          <div class="panel-header">
-            <h3>Chatbot Flow</h3>
-            <span class="status-pill" id="chatStatus">Idle</span>
-          </div>
+        <footer>
+            <p>&copy; 2024 NTT DATA CV Builder Automation - Advanced AI-Powered CV Generation</p>
+        </footer>
+    </div>
 
-          <div id="chatMessages" class="chat-messages"></div>
-
-         <form id="answerForm" class="chat-input-row">
-            <input
-              id="answerInput"
-              type="text"
-              placeholder="Type your answer or use the mic..."
-            />
-            <button
-              type="button"
-              id="voiceBtn"
-              class="secondary-button"
-              title="Speak your answer"
-            >
-              🎤
-            </button>
-            <button type="submit" class="primary-button">Send</button>
-        </form>
-
-        </section>
-
-        <section class="panel upload-panel">
-          <div class="panel-header">
-            <h3>Upload Existing CV</h3>
-            <span class="status-pill neutral">MVP 1 Advanced</span>
-          </div>
-
-          <form id="uploadForm" class="upload-form">
-            <input id="cvFile" type="file" accept=".pdf,.docx,.doc" />
-            <button type="submit" class="primary-btn">Upload and Merge</button>
-          </form>
-
-          <div class="hint">
-            Upload an existing CV to auto-fill fields into the current session. Supports: .doc, .docx, .pdf
-          </div>
-        </section>
-
-        <section class="panel preview-panel">
-          <div class="panel-header">
-            <h3>Structured CV Preview</h3>
-            <span class="status-pill success">Live</span>
-          </div>
-          <pre id="previewBox" class="json-box">{}</pre>
-        </section>
-
-        <section class="panel validation-panel">
-          <div class="panel-header">
-            <h3>Validation / API Response</h3>
-            <span class="status-pill neutral">API Output</span>
-          </div>
-          <pre id="responseBox" class="json-box">{}</pre>
-        </section>
-
-        <section class="panel validation-panel">
-          <div class="panel-header">
-            <h3>Retrieved Context</h3>
-            <span class="status-pill neutral">RAG Lite</span>
-          </div>
-          <pre id="contextBox" class="json-box">[]</pre>
-        </section>
-      </section>
-    </main>
-  </div>
-
-  <script src="/static/app.js?v=3"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>

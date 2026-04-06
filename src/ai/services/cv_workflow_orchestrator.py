@@ -4,6 +4,11 @@ Implements: Upload → AI Extraction → Schema Mapping → RAG Enrichment → V
 """
 import json
 from typing import Dict, Any, Optional, List
+
+# Load environment variables first
+from src.core.env_loader import load_environment_variables
+load_environment_variables()
+
 from src.ai.services.cv_extraction_service import CVExtractionService
 from src.ai.services.rag_normalization_service import RAGNormalizationService, QualityImprovementService
 from src.infrastructure.parsers.deduplication_utils import deduplicate_cv_data

@@ -50,3 +50,12 @@ async def upload_cv(
         }
 
     return {"parsed_data": parsed_data}
+
+
+@router.post("/import")
+async def import_cv(
+    file: UploadFile = File(...),
+    session_id: str = Form(None),
+):
+    """Import a CV file - alias for upload endpoint"""
+    return await upload_cv(file, session_id)

@@ -1,0 +1,1 @@
+provider: entra_id\ntoken_url: /auth/token\n

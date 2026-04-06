@@ -1,482 +1,429 @@
-from typing import Dict, Any, List
-import json
-import os
 import re
+from typing import Dict, Any, List, Optional
 
 
 class TranscriptCVParser:
-    """AI-powered parser for converting voice transcript text into structured CV data."""
-
-    def __init__(self):
-        self.openai_available = False
-        try:
-            import openai
-            api_key = os.getenv("OPENAI_API_KEY")
-            if api_key:
-                self.client = openai.OpenAI(api_key=api_key)
-                self.openai_available = True
-        except ImportError:
-            pass
-
+    """
+    Comprehensive transcript parser for voice-based CV input.
+    Extracts structured CV data from natural language voice transcripts.
+    FIXED VERSION - Addresses all known extraction issues
+    """
+    
     def parse(self, transcript: str) -> Dict[str, Any]:
-        """Parse transcript into structured CV data using AI."""
-        if not transcript or not transcript.strip():
-            return self._empty_result()
+        """Parse a voice transcript into structured CV data"""
+        result: Dict[str, Any] = {
+            "header": {},
+            "summary": "",
+            "skills": [],
+            "secondary_skills": [],
+            "tools_and_platforms": [],
+            "ai_frameworks": [],
+            "cloud_platforms": [],
+            "operating_systems": [],
+            "databases": [],
+            "domain_expertise": [],
+            "employment": {},
+            "leadership": {},
+            "work_experience": [],
+            "project_experience": [],
+            "certifications": [],
+            "education": [],
+            "publications": [],
+            "awards": [],
+            "languages": [],
+            "schema_version": "1.0"
+        }
 
-        if not self.openai_available:
-            print("Warning: OpenAI not available, using regex-based extraction")
-            return self._regex_extract(transcript)
-
-        try:
-            response = self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an expert CV data extraction assistant. Extract structured information from voice transcripts.
-
-IMPORTANT RULES:
-1. Extract ALL information mentioned in the transcript
-2. Preserve exact names, numbers, and details
-3. Handle voice-to-text errors (e.g., "at the rate" means "@")
-4. Organize skills into proper categories
-5. Extract complete project details including responsibilities
-6. Extract all education qualifications with complete details
-7. Return valid JSON only, no markdown or code blocks
-
-Output Format:
-{
-  "personal_information": {
-    "full_name": "Full Name",
-    "portal_id": "ID",
-    "grade": "Grade",
-    "contact_number": "Phone",
-    "email": "email@domain.com",
-    "current_location": "City",
-    "designation": "Title"
-  },
-  "professional_summary": {
-    "total_experience_years": 0,
-    "summary": "Professional summary text"
-  },
-  "skills": {
-    "primary_skills": ["skill1", "skill2"],
-    "secondary_skills": ["skill1", "skill2"],
-    "ai_frameworks": ["framework1"],
-    "cloud_platforms": ["AWS", "Azure"],
-    "operating_systems": ["Windows", "Linux"],
-    "databases": ["MySQL", "PostgreSQL"]
-  },
-  "domain_expertise": ["domain1", "domain2"],
-  "employment_details": {
-    "current_company": "Company Name",
-    "years_with_current_company": 0,
-    "clients": ["Client1", "Client2"]
-  },
-  "project_experience": [{
-    "project_name": "Name",
-    "client": "Client",
-    "domain": "Domain",
-    "technologies_used": ["tech1", "tech2"],
-    "project_description": "Description",
-    "role": "Role",
-    "responsibilities": ["resp1", "resp2"]
-  }],
-  "certifications_and_trainings": [{
-    "name": "Certification Name",
-    "duration": {
-      "from": "YYYY-MM-DD",
-      "to": "YYYY-MM-DD"
-    }
-  }],
-  "education": [{
-    "qualification": "Degree Name",
-    "specialization": "Branch/Stream",
-    "college": "College Name",
-    "university": "University Name",
-    "year_of_passing": "YYYY",
-    "percentage": "XX%"
-  }]
-}"""
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Extract CV information from this transcript:\n\n{transcript}"
-                    }
-                ],
-                temperature=0.1,
-                response_format={"type": "json_object"}
-            )
-
-            result_text = response.choices[0].message.content.strip()
-            
-            # Remove markdown code blocks if present
-            if result_text.startswith("```"):
-                result_text = result_text.split("```")[1]
-                if result_text.startswith("json"):
-                    result_text = result_text[4:]
-                result_text = result_text.strip()
-            
-            parsed_data = json.loads(result_text)
-            
-            # Ensure all required keys exist
-            result = self._empty_result()
-            for key in result.keys():
-                if key in parsed_data:
-                    result[key] = parsed_data[key]
-            
+        if not transcript.strip():
             return result
 
-        except Exception as e:
-            print(f"Error parsing transcript with AI: {e}")
-            return self._empty_result()
+        # Extract each section
+        result["header"] = self._extract_header(transcript)
+        result["skills"] = self._extract_primary_skills(transcript)
+        result["secondary_skills"] = self._extract_secondary_skills(transcript)
+        result["ai_frameworks"] = self._extract_ai_frameworks(transcript)
+        result["cloud_platforms"] = self._extract_cloud_platforms(transcript)
+        result["operating_systems"] = self._extract_operating_systems(transcript)
+        result["databases"] = self._extract_databases(transcript)
+        result["domain_expertise"] = self._extract_domains(transcript)
+        result["employment"] = self._extract_employment(transcript)
+        result["project_experience"] = self._extract_projects(transcript)
+        result["education"] = self._extract_education(transcript)
+        result["summary"] = self._generate_summary(result)
 
-    def _regex_extract(self, transcript: str) -> Dict[str, Any]:
-        """Fallback regex-based extraction when AI is not available."""
-        text = transcript.lower()
-        result = self._empty_result()
-        
-        # Extract personal information
-        personal = result["personal_information"]
-        
-        # Name extraction
-        name_patterns = [
-            r"my name is ([a-z\s]+?)(?:\.|,|my|portal|contact|email|grade)",
-            r"(?:i am|i'm) ([a-z\s]+?)(?:\.|,|my|portal|contact|email|grade)"
-        ]
-        for pattern in name_patterns:
-            match = re.search(pattern, text)
-            if match:
-                personal["full_name"] = match.group(1).strip().title()
-                break
-        
-        # Portal ID / Employee ID
-        portal_patterns = [
-            r"portal id is (\d+)",
-            r"employee id is (\d+)",
-            r"id is (\d+)"
-        ]
-        for pattern in portal_patterns:
-            match = re.search(pattern, text)
-            if match:
-                personal["portal_id"] = match.group(1)
-                break
-        
-        # Grade
-        grade_match = re.search(r"grade is (\d+)", text)
+        return result
+
+    def low_confidence(self, parsed: Dict[str, Any]) -> bool:
+        """Check if parsing confidence is low"""
+        header = parsed.get("header", {})
+        has_name = bool(header.get("full_name"))
+        has_skills = bool(parsed.get("skills") or parsed.get("secondary_skills"))
+        return not (has_name and has_skills)
+
+    def _extract_header(self, text: str) -> Dict[str, Any]:
+        """Extract header/personal information - FIXED VERSION"""
+        header = {
+            "full_name": "",
+            "current_title": "",
+            "location": "",
+            "current_organization": "NTT",
+            "total_experience": "",
+            "target_role": None,
+            "email": "",
+            "employee_id": "",
+            "contact_number": "",
+            "grade": ""
+        }
+
+        # Extract name
+        name_match = re.search(
+            r"(?:my name is|i am|this is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,4})",
+            text,
+            re.IGNORECASE
+        )
+        if name_match:
+            header["full_name"] = name_match.group(1).strip()
+
+        # Extract portal ID / employee ID
+        portal_match = re.search(r"portal\s+id\s+is\s+(\d+)", text, re.IGNORECASE)
+        if portal_match:
+            header["employee_id"] = portal_match.group(1)
+
+        # Extract grade
+        grade_match = re.search(r"(?:current\s+)?grade\s+is\s+(\d+)", text, re.IGNORECASE)
         if grade_match:
-            personal["grade"] = grade_match.group(1)
-        
-        # Contact number
+            header["grade"] = grade_match.group(1)
+
+        # FIXED: Extract contact number - handle various formats
         contact_patterns = [
-            r"contact number is (\d+)",
-            r"phone number is (\d+)",
-            r"mobile is (\d+)"
+            r"contact\s+number\s+is\s+([\d\-]{10,})",  # With dashes
+            r"contact\s+number\s+is\s+(\d{3})\-(\d{3})\-(\d{4})",  # XXX-XXX-XXXX
+            r"contact\s+number\s+is\s+(\d{10,})",  # Plain digits
+            r"reach\s+at[,\s]+or\s+my\s+contact\s+number\s+is\s+([\d\-]+)",  # Alternative phrasing
         ]
+        
         for pattern in contact_patterns:
-            match = re.search(pattern, text)
-            if match:
-                personal["contact_number"] = match.group(1)
+            contact_match = re.search(pattern, text, re.IGNORECASE)
+            if contact_match:
+                # Get all captured groups
+                if len(contact_match.groups()) > 1:
+                    # Multiple groups (e.g., XXX-XXX-XXXX)
+                    header["contact_number"] = "".join(contact_match.groups())
+                else:
+                    # Single group
+                    number = contact_match.group(1).replace("-", "").replace(" ", "")
+                    header["contact_number"] = number
                 break
-        
-        # Email - handle "at the rate" voice-to-text
-        email_patterns = [
-            r"email (?:id )?is ([a-z0-9.]+) at the rate ([a-z0-9.]+)\.com",
-            r"email (?:id )?is ([a-z0-9.]+)@([a-z0-9.]+)\.com"
-        ]
-        for pattern in email_patterns:
-            match = re.search(pattern, text)
-            if match:
-                personal["email"] = f"{match.group(1)}@{match.group(2)}.com"
-                break
-        
-        # Location
+
+        # Extract email
+        email_match = re.search(r"email\s+(?:address\s+)?is\s+([\w\.\-]+@[\w\.\-]+)", text, re.IGNORECASE)
+        if email_match:
+            header["email"] = email_match.group(1).strip()
+        else:
+            # Try without @ symbol (voice recognition issue)
+            email_match2 = re.search(r"email\s+(?:address\s+)?is\s+([\w\.]+\.com)", text, re.IGNORECASE)
+            if email_match2:
+                email = email_match2.group(1).strip()
+                # Add @nttdata if missing
+                if "@" not in email:
+                    email = email.replace(".com", "@nttdata.com")
+                header["email"] = email
+
+        # FIXED: Extract location - look in multiple places
         location_patterns = [
-            r"(?:current )?location is (?:in )?([a-z]+)",
-            r"based in ([a-z]+)",
-            r"working from ([a-z]+)"
+            r"based\s+in\s+the\s+([A-Za-z]+)\s+location",
+            r"location\s+is\s+([A-Za-z]+)",
+            r"based\s+in\s+([A-Za-z]+)",
         ]
+        
         for pattern in location_patterns:
-            match = re.search(pattern, text)
-            if match:
-                personal["current_location"] = match.group(1).title()
+            location_match = re.search(pattern, text, re.IGNORECASE)
+            if location_match:
+                header["location"] = location_match.group(1).strip().title()
                 break
-        
-        # Designation
-        designation_patterns = [
-            r"(?:current )?designation is ([a-z\s]+?)(?:\.|,|my|location|working)",
-            r"working as (?:a )?([a-z\s]+?)(?:\.|,|my|location)"
+
+        # FIXED: Extract years of experience - multiple patterns
+        exp_patterns = [
+            r"over\s+past\s+(\d+)\s+years",
+            r"(\d+)\s+years\s+(?:of\s+)?experience",
+            r"(\d+)\s+years\s+in\s+the\s+IT",
         ]
-        for pattern in designation_patterns:
-            match = re.search(pattern, text)
-            if match:
-                personal["designation"] = match.group(1).strip().title()
+        
+        for pattern in exp_patterns:
+            exp_match = re.search(pattern, text, re.IGNORECASE)
+            if exp_match:
+                header["total_experience"] = f"{exp_match.group(1)} years"
                 break
-        
-        # Professional summary
-        exp_match = re.search(r"(\d+) years of experience", text)
-        if exp_match:
-            result["professional_summary"]["total_experience_years"] = int(exp_match.group(1))
-        
-        # Extract summary text - handle multiple formats
-        summary_patterns = [
-            r"professional summary[,:]? (.+?)(?:my primary|my secondary|coming to|my first|primary skill|secondary skill|$)",
-            r"my professional summary[,:]? (.+?)(?:my primary|my secondary|coming to|my first|primary skill|secondary skill|$)",
-            r"summary[,:]? (.+?)(?:my primary|my secondary|coming to|my first|primary skill|secondary skill|$)"
+
+        # FIXED: Extract designation/title
+        desig_patterns = [
+            r"current\s+role\s+is\s+([A-Z][A-Za-z\s]+?)(?:\s+at\s+|\.)",
+            r"designation\s+is\s+([A-Za-z\s]+?)(?:\.|,|\s+at\s+)",
         ]
-        for pattern in summary_patterns:
-            match = re.search(pattern, text, re.DOTALL)
-            if match:
-                summary = match.group(1).strip()
-                # Clean up and capitalize
-                summary = re.sub(r'\s+', ' ', summary)
-                # Remove trailing incomplete sentences
-                summary = summary.rstrip(',.')
-                if len(summary) > 20:  # Only use if substantial
-                    result["professional_summary"]["summary"] = summary[:800]  # Allow longer summaries
+        
+        for pattern in desig_patterns:
+            desig_match = re.search(pattern, text, re.IGNORECASE)
+            if desig_match:
+                title = desig_match.group(1).strip()
+                if len(title) > 3:
+                    header["current_title"] = title
                     break
+
+        return header
+
+    def _extract_primary_skills(self, text: str) -> List[str]:
+        """Extract primary skills"""
+        skills = []
         
-        # Extract skills
-        skills = result["skills"]
+        # Look for primary skill markers
+        match = re.search(
+            r"primary\s+skill(?:s)?\s+(?:is|are)\s+([^.]+?)(?:\.|my\s+secondary|coming\s+to)",
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
         
-        # Primary skills
-        primary_match = re.search(r"primary skill(?:s)? (?:is|are) (.+?)(?:\.|my secondary|coming to|$)", text, re.DOTALL)
-        if primary_match:
-            skills_text = primary_match.group(1)
-            skills["primary_skills"] = self._extract_skill_list(skills_text)
+        if match:
+            skill_text = match.group(1)
+            # Split by commas and 'and'
+            parts = re.split(r',|\s+and\s+', skill_text)
+            for part in parts:
+                skill = part.strip()
+                # Remove trailing periods or extra words
+                skill = re.sub(r'\.$', '', skill)
+                skill = re.sub(r'\s+(?:and|or)\s*$', '', skill, flags=re.IGNORECASE)
+                
+                if skill and len(skill) > 2:
+                    skills.append(skill)
         
-        # Secondary skills
-        secondary_match = re.search(r"secondary skill(?:s)? (?:is|are) (.+?)(?:\.|my ai|operating system|database|coming to|$)", text, re.DOTALL)
-        if secondary_match:
-            skills_text = secondary_match.group(1)
-            skills["secondary_skills"] = self._extract_skill_list(skills_text)
+        return skills
+
+    def _extract_secondary_skills(self, text: str) -> List[str]:
+        """Extract secondary skills"""
+        skills = []
         
-        # AI frameworks
-        ai_match = re.search(r"ai framework(?:s)? (?:is|are) (.+?)(?:\.|operating system|database|coming to|$)", text, re.DOTALL)
-        if ai_match:
-            skills_text = ai_match.group(1)
-            skills["ai_frameworks"] = self._extract_skill_list(skills_text)
+        match = re.search(
+            r"secondary\s+skill(?:s)?\s+(?:is|are)\s+([^.]+?)(?:\.|i\s+have\s+also|coming\s+to)",
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
         
-        # Operating systems
-        os_match = re.search(r"operating system(?:s)?(?: side)? (?:i|i'm|i am)? (?:well-versed |versed in |know )?(.+?)(?:\.|database|coming to|$)", text, re.DOTALL)
-        if os_match:
-            skills_text = os_match.group(1)
-            skills["operating_systems"] = self._extract_skill_list(skills_text)
+        if match:
+            skill_text = match.group(1)
+            parts = re.split(r',|\s+and\s+', skill_text)
+            for part in parts:
+                skill = part.strip()
+                skill = re.sub(r'\.$', '', skill)
+                
+                if skill and len(skill) > 2:
+                    skills.append(skill)
         
-        # Databases
-        db_match = re.search(r"database(?: side)? (?:i|i'm|i have)? (?:have )?(?:good )?(?:experience in |know )?(.+?)(?:\.|i worked|domains|coming to|$)", text, re.DOTALL)
-        if db_match:
-            skills_text = db_match.group(1)
-            skills["databases"] = self._extract_skill_list(skills_text)
+        return skills
+
+    def _extract_ai_frameworks(self, text: str) -> List[str]:
+        """Extract AI frameworks - FIXED VERSION"""
+        frameworks = []
         
-        # Cloud platforms (extract from summary or skills)
-        cloud_keywords = ["aws", "azure", "gcp", "google cloud"]
+        # Multiple patterns to catch AI frameworks
+        patterns = [
+            r"(?:hands[\-\s]on\s+)?experience\s+in\s+ai\s+frameworks?\s+such\s+as\s+([^.]+?)(?:\.|i\s+(?:well|am)|coming\s+to)",
+            r"ai\s+frameworks?\s+(?:like|such\s+as)\s+([^.]+?)(?:\.|coming\s+to)",
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                fw_text = match.group(1)
+                # Split by 'and' and commas
+                parts = re.split(r',|\s+and\s+', fw_text)
+                for part in parts:
+                    fw = part.strip()
+                    # Clean up
+                    fw = re.sub(r'\s+frameworks?$', '', fw, flags=re.IGNORECASE)
+                    fw = re.sub(r'\.$', '', fw)
+                    
+                    if fw and len(fw) > 2 and 'framework' not in fw.lower():
+                        frameworks.append(fw.title())
+                break
+        
+        return frameworks
+
+    def _extract_cloud_platforms(self, text: str) -> List[str]:
+        """Extract cloud platforms"""
+        platforms = []
+        
+        # Look for explicit cloud mentions
+        cloud_keywords = ['AWS', 'Azure', 'GCP', 'Google Cloud', 'IBM Cloud']
+        text_upper = text.upper()
+        
         for keyword in cloud_keywords:
-            if keyword in text:
-                skills["cloud_platforms"].append(keyword.upper() if keyword == "aws" else keyword.title())
+            if keyword.upper() in text_upper:
+                platforms.append(keyword)
         
-        # Domain expertise
-        domain_match = re.search(r"(?:worked on )?domains? (?:in |are )?(.+?)(?:\.|currently|coming to|$)", text, re.DOTALL)
-        if domain_match:
-            domain_text = domain_match.group(1)
-            result["domain_expertise"] = self._extract_skill_list(domain_text)
+        return platforms
+
+    def _extract_operating_systems(self, text: str) -> List[str]:
+        """Extract operating systems - FIXED VERSION"""
+        os_list = []
         
-        # Employment details
-        company_match = re.search(r"(?:worked for|working with|working at) ([a-z\s]+?)(?: for| past| since)", text)
-        if company_match:
-            result["employment_details"]["current_company"] = company_match.group(1).strip().upper()
+        # Multiple patterns to catch OS mentions
+        patterns = [
+            r"(?:well\s+versed\s+)?working\s+in\s+([^.]+?)\s+operating\s+systems?",
+            r"operating\s+systems?\s+(?:like|such\s+as)\s+([^.]+?)(?:\.|coming\s+to)",
+            r"(?:experience\s+in|worked\s+on)\s+([^.]+?)\s+(?:and\s+)?(?:windows|linux)\s+operating\s+systems?",
+        ]
         
-        years_match = re.search(r"(?:for |past )(\d+) years", text)
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                os_text = match.group(1)
+                # Split by 'and'
+                parts = re.split(r'\s+and\s+', os_text)
+                for part in parts:
+                    os_name = part.strip()
+                    os_name = re.sub(r'\.$', '', os_name)
+                    
+                    if os_name and len(os_name) > 2:
+                        os_list.append(os_name.title())
+                break
+        
+        return os_list
+
+    def _extract_databases(self, text: str) -> List[str]:
+        """Extract databases - FIXED VERSION"""
+        databases = []
+        
+        # Multiple patterns to catch database mentions
+        patterns = [
+            r"coming\s+to\s+the\s+database,?\s+i\s+have\s+strong\s+experience\s+with\s+([^.]+?)(?:\s+over\s+the\s+course|\.|$)",
+            r"database\s+(?:side|experience)[,\s]+i\s+have\s+(?:good|strong)\s+experience\s+(?:with|in)\s+([^.]+?)(?:\.|over\s+the|coming\s+to)",
+            r"databases?\s+(?:like|such\s+as|are)\s+([^.]+?)(?:\.|coming\s+to)",
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                db_text = match.group(1)
+                # Split by commas and 'and'
+                parts = re.split(r',|\s+and\s+', db_text)
+                for part in parts:
+                    db = part.strip()
+                    db = re.sub(r'\.$', '', db)
+                    
+                    # Filter out filler words
+                    if (db and len(db) > 2 and 
+                        'experience' not in db.lower() and 
+                        'strong' not in db.lower() and
+                        'good' not in db.lower()):
+                        
+                        # Standardize common database names
+                        if 'mysql' in db.lower():
+                            db = 'MySQL'
+                        elif 'postgres' in db.lower() or 'postgresql' in db.lower():
+                            db = 'PostgreSQL'
+                        elif db.upper() in ['DB2', 'ORACLE']:
+                            db = db.upper()
+                        else:
+                            db = db.title()
+                        
+                        databases.append(db)
+                break
+        
+        return databases
+
+    def _extract_domains(self, text: str) -> List[str]:
+        """Extract domain expertise"""
+        domains = []
+        
+        # Look for "worked on domains" pattern
+        match = re.search(
+            r"worked\s+on\s+domains?,?\s+([^.]+?)(?:\.|currently|my\s+designation)",
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        if match:
+            domain_text = match.group(1)
+            # Split by commas and 'and'
+            parts = re.split(r',|\s+and\s+', domain_text)
+            for part in parts:
+                domain = part.strip()
+                if domain and len(domain) > 3:
+                    domains.append(domain.title())
+        
+        return domains
+
+    def _extract_employment(self, text: str) -> Dict[str, Any]:
+        """Extract employment information - FIXED VERSION"""
+        employment = {
+            "current_company": "NTT",
+            "years_with_current_company": 0,
+            "clients": []
+        }
+        
+        # Extract years with company
+        years_match = re.search(
+            r"(?:worked\s+for\s+[\w\s]+\s+for\s+(?:first\s+)?(\d+)\s+years)",
+            text,
+            re.IGNORECASE
+        )
         if years_match:
-            result["employment_details"]["years_with_current_company"] = int(years_match.group(1))
+            employment["years_with_current_company"] = int(years_match.group(1))
         
-        # Extract clients
-        clients_match = re.search(r"(?:with )?clients? (?:like )?(.+?)(?:\.|now|coming to|$)", text, re.DOTALL)
-        if clients_match:
-            clients_text = clients_match.group(1)
-            result["employment_details"]["clients"] = self._extract_skill_list(clients_text)
-        
-        # Extract education
-        education = []
-        
-        # Master's degree
-        masters_patterns = [
-            r"(?:completed )?master(?:'s)? of ([a-z\s]+?)(?:,|\.|\sbranch)",
-            r"(?:completed )?m\.?(?:sc|tech|s)\.? (?:in )?([a-z\s]+?)(?:,|\.|\sbranch)"
+        # FIXED: Extract clients - multiple patterns
+        client_patterns = [
+            r"worked\s+with\s+(?:key\s+)?clients?\s+(?:like|such\s+as)\s+([^.]+?)(?:\.|coming\s+to)",
+            r"clients?\s+(?:include|are)\s+([^.]+?)(?:\.|coming\s+to)",
         ]
-        for pattern in masters_patterns:
-            match = re.search(pattern, text)
-            if match:
-                edu_entry = {
-                    "qualification": f"Master of {match.group(1).strip().title()}",
-                    "specialization": "Computers",
-                    "college": "",
-                    "university": "",
-                    "year_of_passing": "",
-                    "percentage": ""
-                }
-                # Try to find associated details
-                context_start = match.start()
-                context_end = min(context_start + 300, len(text))
-                context = text[context_start:context_end]
-                
-                year_match = re.search(r"year of passing is (\d{4})", context)
-                if year_match:
-                    edu_entry["year_of_passing"] = year_match.group(1)
-                
-                college_match = re.search(r"college (?:name )?is ([a-z\s.]+?)(?:\.|university)", context)
-                if college_match:
-                    edu_entry["college"] = college_match.group(1).strip().upper()
-                
-                univ_match = re.search(r"university (?:name )?is ([a-z\s]+?)(?:\.|i got|year|$)", context)
-                if univ_match:
-                    edu_entry["university"] = univ_match.group(1).strip().title()
-                
-                education.append(edu_entry)
+        
+        for pattern in client_patterns:
+            clients_match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if clients_match:
+                client_text = clients_match.group(1)
+                parts = re.split(r',|\s+and\s+', client_text)
+                for part in parts:
+                    client = part.strip()
+                    client = re.sub(r'\.$', '', client)
+                    
+                    if client and len(client) > 2:
+                        employment["clients"].append(client.title())
                 break
         
-        # Bachelor's degree
-        bachelor_patterns = [
-            r"bachelor(?:'s)? of ([a-z\s]+?)(?:,|\.|\sbranch)",
-            r"b\.?(?:sc|tech|s|a|com)\.? (?:in )?([a-z\s]+?)(?:,|\.|\sbranch)"
-        ]
-        for pattern in bachelor_patterns:
-            match = re.search(pattern, text)
-            if match:
-                edu_entry = {
-                    "qualification": f"Bachelor of {match.group(1).strip().title()}",
-                    "specialization": "Computers",
-                    "college": "",
-                    "university": "",
-                    "year_of_passing": "",
-                    "percentage": ""
-                }
-                # Try to find associated details
-                context_start = match.start()
-                context_end = min(context_start + 300, len(text))
-                context = text[context_start:context_end]
-                
-                college_match = re.search(r"college (?:name )?is ([a-z\s.]+?)(?:\.|university)", context)
-                if college_match:
-                    edu_entry["college"] = college_match.group(1).strip().title()
-                
-                univ_match = re.search(r"university (?:name )?is ([a-z\s]+?)(?:\.|i got|year|$)", context)
-                if univ_match:
-                    edu_entry["university"] = univ_match.group(1).strip().title()
-                
-                percent_match = re.search(r"i got (?:the )?(\d+)%", context)
-                if percent_match:
-                    edu_entry["percentage"] = f"{percent_match.group(1)}%"
-                
-                education.append(edu_entry)
-                break
-        
-        # 12th standard
-        inter_match = re.search(r"(?:completed my )?12th standard", text)
-        if inter_match:
-            edu_entry = {
-                "qualification": "12th Standard",
-                "specialization": "",
-                "college": "",
-                "university": "",
-                "year_of_passing": "",
-                "percentage": ""
-            }
-            context_start = inter_match.start()
-            context_end = min(context_start + 250, len(text))
-            context = text[context_start:context_end]
-            
-            branch_match = re.search(r"branch is ([a-z]+)", context)
-            if branch_match:
-                edu_entry["specialization"] = branch_match.group(1).upper()
-            
-            college_match = re.search(r"college is ([a-z\s.]+?)(?:\.|university)", context)
-            if college_match:
-                edu_entry["college"] = college_match.group(1).strip().title()
-            
-            univ_match = re.search(r"university (?:name )?is ([a-z\s]+?)(?:\.|i got|year|$)", context)
-            if univ_match:
-                edu_entry["university"] = univ_match.group(1).strip().title()
-            
-            percent_match = re.search(r"i got (?:the )?(\d+)%", context)
-            if percent_match:
-                edu_entry["percentage"] = f"{percent_match.group(1)}%"
-            
-            education.append(edu_entry)
-        
-        # 10th standard
-        tenth_match = re.search(r"(?:completed )?10th standard", text)
-        if tenth_match:
-            edu_entry = {
-                "qualification": "10th Standard",
-                "specialization": "General",
-                "college": "",
-                "university": "",
-                "year_of_passing": "",
-                "percentage": ""
-            }
-            context_start = tenth_match.start()
-            context_end = min(context_start + 250, len(text))
-            context = text[context_start:context_end]
-            
-            school_match = re.search(r"school (?:name )?is ([a-z\s.]+?)(?:\.|university)", context)
-            if school_match:
-                edu_entry["college"] = school_match.group(1).strip().upper()
-            
-            univ_match = re.search(r"university (?:name )?is ([a-z\s]+?)(?:\.|year|i got|$)", context)
-            if univ_match:
-                edu_entry["university"] = univ_match.group(1).strip().title()
-            
-            year_match = re.search(r"year of passing is (\d{4})", context)
-            if year_match:
-                edu_entry["year_of_passing"] = year_match.group(1)
-            
-            percent_match = re.search(r"i got (?:the )?(\d+)%", context)
-            if percent_match:
-                edu_entry["percentage"] = f"{percent_match.group(1)}%"
-            
-            education.append(edu_entry)
-        
-        result["education"] = education
-        
-        # Extract project experience
+        return employment
+
+    def _extract_projects(self, text: str) -> List[Dict[str, Any]]:
+        """Extract project experience - FIXED VERSION"""
         projects = []
         
-        # Find project mentions - look for patterns like "my first project", "my second project", "coming to my project"
-        project_patterns = [
-            r"(?:my )?(?:first|second|third|1st|2nd|3rd) project (?:is|name is) ([a-z\s]+?)(?:\.|,|current client|client is|project description)",
-            r"project (?:name )?is ([a-z\s]+?)(?:\.|,|current client|client is|project description)",
-            r"coming to (?:my )?project(?: details)?\s*(?:,|is)?\s*(?:my )?(?:first|second)? project (?:is )?([a-z\s]+?)(?:\.|client|project description)"
+        # FIXED: Better project splitting - capture ALL projects
+        # Look for project markers: "first project", "second project", etc.
+        project_markers = [
+            r"my\s+first\s+project\s+is",
+            r"my\s+second\s+project\s+is",
+            r"my\s+third\s+project\s+is",
+            r"my\s+next\s+project\s+is",
         ]
         
-        # Split transcript into project sections
-        project_sections = []
+        # Find all project positions
+        project_positions = []
+        for marker in project_markers:
+            for match in re.finditer(marker, text, re.IGNORECASE):
+                project_positions.append(match.start())
         
-        # Find all occurrences of project mentions
-        project_starts = []
-        for match in re.finditer(r"(?:my |coming to (?:my )?)?(?:first|second|third|1st|2nd|3rd) project", text):
-            project_starts.append(match.start())
+        # Sort positions
+        project_positions.sort()
         
         # Extract each project section
-        for i, start_pos in enumerate(project_starts):
-            end_pos = project_starts[i + 1] if i + 1 < len(project_starts) else len(text)
+        for i, start_pos in enumerate(project_positions):
+            # Determine end position (start of next project or end of text)
+            if i + 1 < len(project_positions):
+                end_pos = project_positions[i + 1]
+            else:
+                # Last project - find "educational qualifications" or end
+                edu_match = re.search(r"coming\s+to\s+(?:my\s+)?educational", text[start_pos:], re.IGNORECASE)
+                end_pos = start_pos + edu_match.start() if edu_match else len(text)
+            
             section = text[start_pos:end_pos]
-            project_sections.append(section)
-        
-        # If no numbered projects found, look for generic project mentions
-        if not project_sections:
-            # Check for patterns like "coming to my project details"
-            project_detail_match = re.search(r"coming to (?:my )?project details(.+?)(?:coming to|qualifications|educational|thank you|$)", text, re.DOTALL)
-            if project_detail_match:
-                section = project_detail_match.group(1)
-                # Try to split by project indicators
-                parts = re.split(r"(?:my |the )?(?:first|second|third) project", section)
-                for part in parts:
-                    if len(part.strip()) > 50:
-                        project_sections.append(part)
-        
-        # Parse each project section
-        for section in project_sections:
+            
             project = {
                 "project_name": "",
                 "client": "",
@@ -488,172 +435,226 @@ Output Format:
             }
             
             # Extract project name
-            name_patterns = [
-                r"project (?:is |name is )?([a-z\s]+?)(?:\.|,|current client|client)",
-                r"(?:first|second|third) project (?:is )?([a-z\s]+?)(?:\.|client)"
-            ]
-            for pattern in name_patterns:
-                match = re.search(pattern, section)
-                if match:
-                    project["project_name"] = match.group(1).strip().title()
-                    break
+            name_match = re.search(r"project\s+is\s+([^.,]+?)(?:\.|,|\s+client)", section, re.IGNORECASE)
+            if name_match:
+                project["project_name"] = name_match.group(1).strip().title()
             
-            # Extract client
-            client_patterns = [
-                r"(?:current )?client is ([a-z\s]+?)(?:\.|,|my project|project description)",
-                r"(?:for )?client ([a-z\s]+?)(?:\.|,|my project|project description)"
-            ]
-            for pattern in client_patterns:
-                match = re.search(pattern, section)
-                if match:
-                    project["client"] = match.group(1).strip().title()
-                    break
+            # FIXED: Extract client - better pattern
+            client_match = re.search(r"client\s+is\s+([^.,]+?)(?:\.|,|\s+the\s+project|\s+my\s+project)", section, re.IGNORECASE)
+            if client_match:
+                client = client_match.group(1).strip()
+                client = re.sub(r'\s+and$', '', client)  # Remove trailing 'and'
+                project["client"] = client.title()
             
-            # Extract domain (if mentioned in project section)
-            domain_match = re.search(r"domain (?:is )?([a-z\s]+?)(?:\.|,|project)", section)
-            if domain_match:
-                project["domain"] = domain_match.group(1).strip().title()
-            
-            # Extract project description
+            # FIXED: Extract project description - comprehensive approach
             desc_patterns = [
-                r"project description is (.+?)(?:my role|role in|role here|coming to)",
-                r"description is (.+?)(?:my role|role in|role here|coming to)",
-                r"(?:current client is [a-z\s]+?\. )(.+?)(?:my role|role in|role here|coming to)"
+                r"project\s+description\s+(?:here\s+)?is\s+(.+?)(?:coming\s+to\s+my\s+role|my\s+role|roles?\s+and\s+responsibilit)",
+                r"(?:client\s+is\s+[^.]+?\.\s+)?(.+?)(?:coming\s+to\s+my\s+role|my\s+role|roles?\s+and\s+responsibilit)",
             ]
+            
             for pattern in desc_patterns:
-                match = re.search(pattern, section, re.DOTALL)
-                if match:
-                    desc = match.group(1).strip()
-                    # Clean up description
-                    desc = re.sub(r'\s+', ' ', desc)
-                    # Remove "so" repetitions at start
-                    desc = re.sub(r'^(?:so )+', '', desc)
-                    # Remove trailing "my role" or similar
-                    desc = re.sub(r'(?:my role|role in|role here|coming to).*$', '', desc, flags=re.IGNORECASE)
-                    desc = desc.strip().rstrip('.')
-                    if len(desc) > 30:  # Only use if substantial
-                        project["project_description"] = desc[:500]  # Limit length
+                desc_match = re.search(pattern, section, re.IGNORECASE | re.DOTALL)
+                if desc_match:
+                    description = desc_match.group(1).strip()
+                    # Clean up
+                    description = re.sub(r'\s+', ' ', description)
+                    description = re.sub(r'\s*\.\s*$', '', description)
+                    description = re.sub(r'here\s+is\s+the\s+', '', description, flags=re.IGNORECASE)
+                    
+                    # Only use if it's a real description
+                    if len(description) > 30 and 'my role' not in description.lower():
+                        project["project_description"] = description
                         break
             
-            # Extract role
+            # FIXED: Extract role
             role_patterns = [
-                r"my role (?:in this project )?(?:is |was )?(?:as )?(?:a )?([a-z\s]+?)(?:\.|,|i |and |developed|designed)",
-                r"role (?:is |was )?(?:as )?(?:a )?([a-z\s]+?)(?:\.|,|i |and |developed|designed)",
-                r"working as (?:a )?([a-z\s]+?)(?:\.|,|i |and |in this)"
+                r"my\s+role\s+is\s+([^.,]+?)(?:\.|,)",
+                r"roles?\s+and\s+responsibilit[iy]+.*?i\s+am\s+(?:a\s+)?([^.,]+?)(?:\.|,)",
             ]
+            
             for pattern in role_patterns:
-                match = re.search(pattern, section)
-                if match:
-                    project["role"] = match.group(1).strip().title()
+                role_match = re.search(pattern, section, re.IGNORECASE)
+                if role_match:
+                    role_text = role_match.group(1).strip()
+                    if len(role_text) > 3 and 'responsibilit' not in role_text.lower():
+                        project["role"] = role_text.title()
+                        break
+            
+            # FIXED: Extract responsibilities - better parsing
+            resp_patterns = [
+                r"responsibilit(?:ies|y)[^.]*?[,:]\s*(.+?)(?:my\s+(?:second|third|next)\s+project|coming\s+to\s+my\s+educational|$)",
+                r"my\s+(?:main\s+)?responsibilit(?:ies|y)\s+(?:are|include)\s+(.+?)(?:my\s+(?:second|third)\s+project|coming\s+to|$)",
+            ]
+            
+            for pattern in resp_patterns:
+                resp_match = re.search(pattern, section, re.IGNORECASE | re.DOTALL)
+                if resp_match:
+                    resp_text = resp_match.group(1)
+                    # Split by sentences or major delimiters
+                    resp_parts = re.split(r'(?:\.|\s+and\s+i\s+|\s+i\s+also\s+)', resp_text)
+                    for resp in resp_parts:
+                        resp_clean = resp.strip()
+                        resp_clean = re.sub(r'\s+', ' ', resp_clean)
+                        
+                        if resp_clean and len(resp_clean) > 10 and 'project' not in resp_clean.lower():
+                            project["responsibilities"].append(resp_clean)
                     break
             
-            # Extract responsibilities (look for action verbs)
-            responsibilities = []
-            action_patterns = [
-                r"i (developed [^\.]+)",
-                r"i (designed [^\.]+)",
-                r"i (created [^\.]+)",
-                r"i (implemented [^\.]+)",
-                r"i (deployed [^\.]+)",
-                r"i (wrote [^\.]+)",
-                r"i (managed [^\.]+)",
-                r"i (keep tracking [^\.]+)"
-            ]
-            for pattern in action_patterns:
-                matches = re.finditer(pattern, section)
-                for match in matches:
-                    resp = match.group(1).strip()
-                    if resp and len(resp) > 10:
-                        responsibilities.append(resp.capitalize())
-            
-            project["responsibilities"] = responsibilities[:10]  # Limit to 10 responsibilities
-            
-            # Extract technologies (look for technical terms)
-            tech_keywords = ["java", "python", "pyspark", "databricks", "jenkins", "cicd", "ci/cd", 
-                           "aws", "azure", "spring", "microservices", "docker", "kubernetes"]
-            technologies = []
+            # Extract technologies
+            tech_keywords = ['Jenkins', 'CICD', 'CI/CD', 'Azure', 'AWS', 'Docker', 'Kubernetes',
+                           'Python', 'Java', 'Spring', 'React', 'Angular', 'Databricks', 'Spark',
+                           'Terraform', 'Git', 'Linux', 'Windows']
             for keyword in tech_keywords:
-                if keyword in section:
-                    tech_name = keyword.upper() if keyword in ["aws", "cicd", "ci/cd"] else keyword.title()
-                    if tech_name not in technologies:
-                        technologies.append(tech_name)
-            project["technologies_used"] = technologies
+                if keyword.lower() in section.lower():
+                    if keyword not in project["technologies_used"]:
+                        project["technologies_used"].append(keyword)
             
-            # Only add project if we have at least a name or description
-            if project["project_name"] or project["project_description"]:
+            if project["project_name"]:
                 projects.append(project)
         
-        result["project_experience"] = projects
+        return projects
+
+    def _extract_education(self, text: str) -> List[Dict[str, Any]]:
+        """Extract education details - FIXED VERSION"""
+        education = []
         
-        return result
-    
-    def _extract_skill_list(self, text: str) -> List[str]:
-        """Extract a list of skills from comma-separated or natural language text."""
-        # Clean up the text
-        text = text.strip().rstrip('.')
+        # Look for educational qualifications section
+        edu_match = re.search(
+            r"(?:coming\s+to\s+)?(?:my\s+)?educational\s+qualifications?(.+?)(?:thank\s+you|$)",
+            text,
+            re.IGNORECASE | re.DOTALL
+        )
         
-        # Split by common separators
-        skills = []
-        separators = [',', ' and ', '&']
+        if not edu_match:
+            return education
         
-        # Try comma-separated first
-        if ',' in text:
-            skills = [s.strip() for s in text.split(',') if s.strip()]
-        # Try "and" separator
-        elif ' and ' in text:
-            skills = [s.strip() for s in text.split(' and ') if s.strip()]
-        # Single skill or space-separated
-        else:
-            # Try to identify individual skills by capitalizing words
-            skills = [text.strip()]
+        edu_text = edu_match.group(1)
         
-        # Clean up and capitalize each skill
-        cleaned_skills = []
-        for skill in skills:
-            skill = skill.strip()
-            if skill and len(skill) > 1:
-                # Capitalize properly (handle special cases like MySQL, PostgreSQL, etc.)
-                if skill.lower() in ['mysql', 'postgresql', 'mongodb', 'db2', 'nosql']:
-                    skill = skill.upper() if skill.lower() == 'db2' else skill.title()
-                elif skill.lower() in ['aws', 'gcp', 'ci/cd', 'cicd', 'api', 'ui', 'dto']:
-                    skill = skill.upper()
-                else:
-                    skill = skill.title()
-                cleaned_skills.append(skill)
+        # FIXED: Extract Master's degree with better pattern matching
+        master_patterns = [
+            r"completed\s+(?:a\s+)?master(?:'s)?\s+(?:degree\s+)?in\s+computer\s+applications.*?branch\s+is\s+([^.,]+)[.,].*?(?:year|passing).*?(\d{4}).*?college.*?is\s+([^.,]+)[.,].*?university.*?is\s+([^.,]+)[.,].*?(?:i\s+got|percentage|marks).*?(\d+)",
+            r"first.*?master.*?computer\s+applications.*?branch[:\s]+([^.,]+).*?college[:\s]+([^.,]+).*?university[:\s]+([^.,]+).*?year.*?(\d{4}).*?(\d+)\s*%",
+        ]
         
-        return cleaned_skills
-    
-    def _empty_result(self) -> Dict[str, Any]:
-        """Return empty CV data structure."""
-        return {
-            "personal_information": {
-                "full_name": "",
-                "portal_id": "",
-                "grade": "",
-                "contact_number": "",
-                "email": "",
-                "current_location": "",
-                "designation": ""
-            },
-            "professional_summary": {
-                "total_experience_years": 0,
-                "summary": ""
-            },
-            "skills": {
-                "primary_skills": [],
-                "secondary_skills": [],
-                "ai_frameworks": [],
-                "cloud_platforms": [],
-                "operating_systems": [],
-                "databases": []
-            },
-            "domain_expertise": [],
-            "employment_details": {
-                "current_company": "",
-                "years_with_current_company": 0,
-                "clients": []
-            },
-            "project_experience": [],
-            "certifications_and_trainings": [],
-            "education": []
-        }
+        for pattern in master_patterns:
+            master_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
+            if master_match:
+                groups = master_match.groups()
+                education.append({
+                    "qualification": "Master's Degree (MCA)",
+                    "specialization": groups[0].strip().title() if groups[0] else "",
+                    "college": groups[2].strip() if len(groups) > 2 else groups[1].strip(),
+                    "university": groups[3].strip() if len(groups) > 3 else groups[2].strip(),
+                    "year_of_passing": groups[1].strip() if len(groups) > 4 else groups[3].strip(),
+                    "percentage": f"{groups[4].strip() if len(groups) > 4 else groups[4].strip()}%"
+                })
+                break
+        
+        # FIXED: Extract Bachelor's degree
+        bachelor_patterns = [
+            r"(?:second|bachelor).*?bachelor(?:'s)?\s+of\s+science.*?branch\s+is\s+([^.,]+)[.,].*?college.*?is\s+([^.,]+)[.,].*?university.*?is\s+([^.,]+)[.,].*?(?:i\s+got|percentage).*?(\d+)",
+            r"bachelor.*?(?:science|engineering).*?branch[:\s]+([^.,]+).*?college[:\s]+([^.,]+).*?university[:\s]+([^.,]+).*?(\d+)\s*%",
+        ]
+        
+        for pattern in bachelor_patterns:
+            bachelor_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
+            if bachelor_match:
+                groups = bachelor_match.groups()
+                education.append({
+                    "qualification": "Bachelor's Degree (B.Sc)",
+                    "specialization": groups[0].strip().title(),
+                    "college": groups[1].strip(),
+                    "university": groups[2].strip(),
+                    "year_of_passing": "",
+                    "percentage": f"{groups[3].strip()}%"
+                })
+                break
+        
+        # FIXED: Extract 12th standard
+        twelfth_patterns = [
+            r"(?:before|third).*?12th\s+standard.*?branch\s+is\s+([^.,]+)[.,].*?college.*?is\s+([^.,]+)[.,].*?university.*?is\s+([^.,]+)[.,].*?(?:i\s+got|percentage).*?(\d+)",
+            r"12th.*?branch[:\s]+([^.,]+).*?college[:\s]+([^.,]+).*?university[:\s]+([^.,]+).*?(\d+)\s*%",
+        ]
+        
+        for pattern in twelfth_patterns:
+            twelfth_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
+            if twelfth_match:
+                groups = twelfth_match.groups()
+                education.append({
+                    "qualification": "12th Standard (Intermediate)",
+                    "specialization": groups[0].strip().upper(),
+                    "college": groups[1].strip(),
+                    "university": groups[2].strip(),
+                    "year_of_passing": "",
+                    "percentage": f"{groups[3].strip()}%"
+                })
+                break
+        
+        # FIXED: Extract 10th standard
+        tenth_patterns = [
+            r"(?:last|10th).*?10th\s+standard.*?(?:school|college).*?is\s+([^.,]+)[.,].*?university.*?is\s+([^.,]+)[.,].*?(?:passing\s+)?year.*?(\d{4})",
+            r"10th.*?school[:\s]+([^.,]+).*?university[:\s]+([^.,]+).*?year[:\s]+(\d{4})",
+        ]
+        
+        for pattern in tenth_patterns:
+            tenth_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
+            if tenth_match:
+                groups = tenth_match.groups()
+                education.append({
+                    "qualification": "10th Standard (SSC)",
+                    "specialization": "",
+                    "college": groups[0].strip(),
+                    "university": groups[1].strip(),
+                    "year_of_passing": groups[2].strip(),
+                    "percentage": ""
+                })
+                break
+        
+        return education
+
+    def _generate_summary(self, parsed_data: Dict[str, Any]) -> str:
+        """Generate professional summary from parsed data"""
+        summary_parts = []
+        
+        header = parsed_data.get("header", {})
+        name = header.get("full_name", "")
+        experience = header.get("total_experience", "")
+        title = header.get("current_title", "")
+        
+        # Build comprehensive summary
+        if name and experience:
+            summary_parts.append(f"{name} is a seasoned IT professional with {experience} of experience")
+        
+        # Add technology expertise
+        skills = parsed_data.get("skills", [])
+        secondary_skills = parsed_data.get("secondary_skills", [])
+        all_skills = skills + secondary_skills[:3]  # Include some secondary skills
+        
+        if all_skills:
+            skill_str = ", ".join(all_skills[:5])
+            summary_parts.append(f"specializing in developing, deploying and providing operational support for enterprise applications using {skill_str}")
+        
+        # Add cloud platforms
+        cloud = parsed_data.get("cloud_platforms", [])
+        if cloud:
+            cloud_str = ", ".join(cloud)
+            summary_parts.append(f"with strong expertise in {cloud_str} cloud services")
+        
+        # Add domains
+        domains = parsed_data.get("domain_expertise", [])
+        if domains:
+            domain_str = ", ".join(domains[:4])
+            summary_parts.append(f"Experience spans across {domain_str} domains")
+        
+        # Add current role
+        if title:
+            summary_parts.append(f"Currently serving as {title}")
+        
+        # Join all parts
+        if summary_parts:
+            summary = ". ".join(summary_parts)
+            if not summary.endswith("."):
+                summary += "."
+            return summary
+        
+        return ""

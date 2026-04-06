@@ -1,0 +1,1 @@
+permissions:\n  - create_cv\n  - review_cv\n  - approve_cv\n  - manage_templates\n

@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     OPENAI_MAX_TOKENS: int = Field(default=4000)
     OPENAI_VERIFY_SSL: bool = Field(default=True)
 
+    # LLM Enhancement Settings
+    LLM_ENHANCEMENT_MODEL: str = Field(default="gpt-4o-mini")
+    LLM_ENHANCEMENT_TEMPERATURE: float = Field(default=0.3)
+    LLM_ENHANCEMENT_MAX_TOKENS: int = Field(default=2000)
+    LLM_SUMMARY_MAX_TOKENS: int = Field(default=500)
+    LLM_ACHIEVEMENT_MAX_TOKENS: int = Field(default=500)
+
     AZURE_OPENAI_ENDPOINT: Optional[str] = None
     AZURE_OPENAI_API_KEY: Optional[str] = None
     AZURE_OPENAI_DEPLOYMENT: Optional[str] = None
