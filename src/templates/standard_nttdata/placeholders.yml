@@ -1,0 +1,49 @@
+# =============================================================================
+# CV Template Placeholders Configuration
+# Standard NTT DATA Template
+# =============================================================================
+
+# Personal Information
+# ==========================================
+full_name: "{{full_name}}"
+employee_id: "{{employee_id}}"  
+email: "{{email}}"
+contact_number: "{{contact_number}}"
+current_title: "{{title}}"
+location: "{{location}}"
+organization: "{{organization}}"
+grade: "{{grade}}"
+experience: "{{experience}}"
+target_role: "{{target_role}}"
+
+# Professional Summary
+# ==========================================
+summary: "{{summary}}"
+
+# Skills & Expertise
+# ==========================================
+skills: "{{skills}}"
+secondary_skills: "{{secondary_skills}}"
+tools_and_platforms: "{{tools_and_platforms}}"
+ai_frameworks: "{{ai_frameworks}}"
+cloud_platforms: "{{cloud_platforms}}"
+operating_systems: "{{operating_systems}}"
+databases: "{{databases}}"
+domain_expertise: "{{domain_expertise}}"
+
+# Experience & Leadership
+# ==========================================
+work_experience: "{{work_experience}}"
+project_experience: "{{project_experience}}"
+leadership_lines: "{{leadership_lines}}"
+
+# Education & Certifications
+# ==========================================
+education: "{{education}}"
+certifications: "{{certifications}}"
+
+# Additional Information  
+# ==========================================
+languages: "{{languages}}"
+awards: "{{awards}}"
+publications: "{{publications}}"

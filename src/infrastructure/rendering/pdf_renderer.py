@@ -1,266 +1,459 @@
 from io import BytesIO
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+from typing import Dict, Any
+import tempfile
+import os
+
+try:
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.units import inch
+except ImportError:
+    # Fallback for environments where reportlab is not available
+    A4 = None
+    canvas = None
+
+# Try to import docx2pdf for DOCX to PDF conversion
+try:
+    import docx2pdf
+    DOCX2PDF_AVAILABLE = True
+except ImportError:
+    DOCX2PDF_AVAILABLE = False
+
+# Try to import alternative PDF libraries
+try:
+    from weasyprint import HTML, CSS
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
 
 
 class PdfRenderer:
-    def render(self, context: dict) -> bytes:
+    def __init__(self, template_name: str = "standard_nttdata"):
+        self.template_name = template_name
+
+    def render(self, context: Dict[str, Any]) -> bytes:
+        """Render CV to PDF using template-based approach"""
+        try:
+            # Method 1: Convert from DOCX template
+            if DOCX2PDF_AVAILABLE:
+                return self._render_from_docx(context)
+            
+            # Method 2: Direct PDF generation with template styling
+            elif A4 and canvas:
+                return self._render_direct_pdf(context)
+            
+            # Method 3: HTML to PDF conversion
+            elif WEASYPRINT_AVAILABLE:
+                return self._render_from_html(context)
+            
+            else:
+                # Fallback: Simple text-based PDF
+                return self._render_fallback(context)
+                
+        except Exception as e:
+            print(f"Warning: Template PDF rendering failed ({e}), using fallback")
+            return self._render_fallback(context)
+
+    def _render_from_docx(self, context: Dict[str, Any]) -> bytes:
+        """Convert DOCX template to PDF"""
+        from src.infrastructure.rendering.docx_renderer import DocxRenderer
+        
+        # Generate DOCX first
+        docx_renderer = DocxRenderer(self.template_name)
+        docx_bytes = docx_renderer.render(context)
+        
+        # Create temporary files for conversion
+        with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as docx_temp:
+            docx_temp.write(docx_bytes)
+            docx_temp_path = docx_temp.name
+        
+        try:
+            # Convert DOCX to PDF
+            with tempfile.NamedTemporaryFile(suffix='.pdf', delete=False) as pdf_temp:
+                pdf_temp_path = pdf_temp.name
+            
+            # Use docx2pdf for conversion
+            docx2pdf.convert(docx_temp_path, pdf_temp_path)
+            
+            # Read the generated PDF
+            with open(pdf_temp_path, 'rb') as pdf_file:
+                pdf_bytes = pdf_file.read()
+            
+            return pdf_bytes
+            
+        finally:
+            # Clean up temporary files
+            try:
+                os.unlink(docx_temp_path)
+                if 'pdf_temp_path' in locals():
+                    os.unlink(pdf_temp_path)
+            except:
+                pass
+
+    def _render_from_html(self, context: Dict[str, Any]) -> bytes:
+        """Render PDF from HTML template"""
+        html_content = self._generate_html_template(context)
+        css_content = self._generate_ntt_css()
+        
+        # Convert HTML to PDF
+        html_doc = HTML(string=html_content)
+        css_doc = CSS(string=css_content)
+        
+        pdf_bytes = html_doc.write_pdf(stylesheets=[css_doc])
+        return pdf_bytes
+
+    def _generate_html_template(self, context: Dict[str, Any]) -> str:
+        """Generate HTML template with NTT DATA styling"""
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Professional CV - {context.get('full_name', '')}</title>
+        </head>
+        <body>
+            <header class="ntt-header">
+                <h1>NTT DATA</h1>
+                <div class="cv-title">Professional CV</div>
+            </header>
+            
+            <main class="cv-content">
+                <!-- Personal Information -->
+                <section class="personal-info">
+                    <h2>Personal Information</h2>
+                    <div class="info-grid">
+                        {self._generate_personal_info_html(context)}
+                    </div>
+                </section>
+                
+                <!-- Professional Summary -->
+                {self._generate_section_html("Professional Summary", "summary", context)}
+                
+                <!-- Skills Sections -->
+                {self._generate_skills_html(context)}
+                
+                <!-- Experience Sections -->
+                {self._generate_experience_html(context)}
+                
+                <!-- Education and Additional -->
+                {self._generate_education_html(context)}
+            </main>
+        </body>
+        </html>
+        """
+        return html
+
+    def _generate_ntt_css(self) -> str:
+        """Generate NTT DATA-style CSS"""
+        return """
+        @page {
+            size: A4;
+            margin: 1in;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+            line-height: 1.4;
+            color: #333;
+        }
+        
+        .ntt-header {
+            text-align: center;
+            border-bottom: 2px solid #0066cc;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+        }
+        
+        .ntt-header h1 {
+            color: #0066cc;
+            font-size: 24pt;
+            margin: 0;
+        }
+        
+        .cv-title {
+            font-size: 16pt;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        
+        h2 {
+            color: #0066cc;
+            font-size: 14pt;
+            border-bottom: 1px solid #0066cc;
+            padding-bottom: 2px;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: 150px 1fr;
+            gap: 5px 20px;
+            margin-bottom: 15px;
+        }
+        
+        .info-label {
+            font-weight: bold;
+        }
+        
+        .section-content {
+            margin-bottom: 15px;
+            white-space: pre-line;
+        }
+        
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .skill-section h3 {
+            font-size: 12pt;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        
+        li {
+            margin-bottom: 2px;
+        }
+        """
+
+    def _generate_personal_info_html(self, context: Dict[str, Any]) -> str:
+        """Generate personal information HTML"""
+        info_fields = [
+            ("Name", "full_name"),
+            ("Employee ID", "employee_id"),
+            ("Email", "email"),
+            ("Contact", "contact_number"),
+            ("Title", "current_title"),
+            ("Grade", "grade"),
+            ("Location", "location"),
+            ("Organization", "organization"),
+            ("Experience", "experience"),
+            ("Target Role", "target_role"),
+        ]
+        
+        html_parts = []
+        for label, key in info_fields:
+            value = context.get(key, "")
+            if value:
+                html_parts.append(f'<div class="info-label">{label}:</div>')
+                html_parts.append(f'<div class="info-value">{value}</div>')
+        
+        return "\n".join(html_parts)
+
+    def _generate_section_html(self, title: str, key: str, context: Dict[str, Any]) -> str:
+        """Generate a standard section HTML"""
+        content = context.get(key, "")
+        if not content:
+            return ""
+        
+        return f"""
+        <section>
+            <h2>{title}</h2>
+            <div class="section-content">{content}</div>
+        </section>
+        """
+
+    def _generate_skills_html(self, context: Dict[str, Any]) -> str:
+        """Generate skills sections HTML"""
+        skills_sections = [
+            ("Primary Skills", "skills"),
+            ("Secondary Skills", "secondary_skills"),
+            ("Tools & Platforms", "tools_and_platforms"),
+            ("AI Frameworks", "ai_frameworks"),
+            ("Cloud Platforms", "cloud_platforms"),
+            ("Operating Systems", "operating_systems"),
+            ("Databases", "databases"),
+            ("Domain Expertise", "domain_expertise"),
+        ]
+        
+        html_parts = []
+        for title, key in skills_sections:
+            content = context.get(key, "")
+            if content:
+                html_parts.append(self._generate_section_html(title, key, context))
+        
+        return "\n".join(html_parts)
+
+    def _generate_experience_html(self, context: Dict[str, Any]) -> str:
+        """Generate experience sections HTML"""
+        experience_sections = [
+            ("Work Experience", "work_experience"),
+            ("Project Experience", "project_experience"),
+            ("Leadership & Impact", "leadership_lines"),
+        ]
+        
+        html_parts = []
+        for title, key in experience_sections:
+            content = context.get(key, "")
+            if content:
+                html_parts.append(self._generate_section_html(title, key, context))
+        
+        return "\n".join(html_parts)
+
+    def _generate_education_html(self, context: Dict[str, Any]) -> str:
+        """Generate education and additional sections HTML"""
+        sections = [
+            ("Education", "education"),
+            ("Certifications", "certifications"),
+            ("Languages", "languages"),
+            ("Awards & Recognition", "awards"),
+            ("Publications", "publications"),
+        ]
+        
+        html_parts = []
+        for title, key in sections:
+            content = context.get(key, "")
+            if content:
+                html_parts.append(self._generate_section_html(title, key, context))
+        
+        return "\n".join(html_parts)
+
+    def _render_direct_pdf(self, context: Dict[str, Any]) -> bytes:
+        """Direct PDF generation using ReportLab with template styling"""
         buffer = BytesIO()
-        pdf = canvas.Canvas(buffer, pagesize=A4)
-
-        width, height = A4
-        y = height - 50
-
-        def write_line(text, font="Helvetica", size=11, gap=16):
-            nonlocal y
-            pdf.setFont(font, size)
-            pdf.drawString(40, y, str(text))
-            y -= gap
-            if y < 50:
-                pdf.showPage()
-                y = height - 50
-
-        # Extract header information (handles both flat and nested structure)
-        header = context.get("header", context)
         
-        write_line("Professional CV", "Helvetica-Bold", 16, 24)
-        full_name = header.get("full_name", "Unnamed Candidate")
-        write_line(full_name, "Helvetica-Bold", 13, 18)
-
-        if header.get("employee_id"):
-            write_line(f"Employee ID: {header.get('employee_id')}")
-        if header.get("email"):
-            write_line(f"Email: {header.get('email')}")
-        if header.get("contact_number"):
-            write_line(f"Contact: {header.get('contact_number')}")
-        if header.get("grade"):
-            write_line(f"Grade: {header.get('grade')}")
-        if header.get("current_title"):
-            write_line(f"Title: {header.get('current_title')}")
-        if header.get("location"):
-            write_line(f"Location: {header.get('location')}")
-        if header.get("current_organization"):
-            write_line(f"Organization: {header.get('current_organization')}")
-        if header.get("total_experience"):
-            write_line(f"Total Experience: {header.get('total_experience')}")
-        if header.get("target_role"):
-            write_line(f"Target Role: {header.get('target_role')}")
-
-        if context.get("summary"):
-            write_line("")
-            write_line("Professional Summary", "Helvetica-Bold", 12, 18)
-            for part in self._split_text(context.get("summary"), 95):
-                write_line(part)
-
-        # Use "skills" as primary skills (the preview uses "skills" not "primary_skills")
-        skills = context.get("skills", [])
-        if skills:
-            write_line("")
-            write_line("Primary Skills", "Helvetica-Bold", 12, 18)
-            for skill in skills:
-                write_line(f"- {skill}")
+        # Create PDF document
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        styles = getSampleStyleSheet()
         
-        secondary_skills = context.get("secondary_skills", [])
-        if secondary_skills:
-            write_line("")
-            write_line("Secondary Skills", "Helvetica-Bold", 12, 18)
-            for skill in secondary_skills:
-                write_line(f"- {skill}")
+        # Custom styles for NTT DATA
+        ntt_title_style = ParagraphStyle(
+            'NTTTitle',
+            parent=styles['Title'],
+            fontSize=24,
+            textColor='#0066cc',
+            alignment=1,  # Center
+        )
         
-        if context.get("tools_and_platforms"):
-            write_line("")
-            write_line("Tools & Platforms", "Helvetica-Bold", 12, 18)
-            for tool in context.get("tools_and_platforms", []):
-                write_line(f"- {tool}")
+        ntt_heading_style = ParagraphStyle(
+            'NTTHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor='#0066cc',
+        )
         
-        if context.get("ai_frameworks"):
-            write_line("")
-            write_line("AI Frameworks", "Helvetica-Bold", 12, 18)
-            for framework in context.get("ai_frameworks", []):
-                write_line(f"- {framework}")
+        # Build document content
+        story = []
         
-        if context.get("cloud_platforms"):
-            write_line("")
-            write_line("Cloud Platforms", "Helvetica-Bold", 12, 18)
-            for platform in context.get("cloud_platforms", []):
-                write_line(f"- {platform}")
+        # Header
+        story.append(Paragraph("NTT DATA", ntt_title_style))
+        story.append(Paragraph("Professional CV", styles['Title']))
+        story.append(Spacer(1, 0.2*inch))
         
-        if context.get("operating_systems"):
-            write_line("")
-            write_line("Operating Systems", "Helvetica-Bold", 12, 18)
-            for os in context.get("operating_systems", []):
-                write_line(f"- {os}")
+        # Personal Information
+        story.append(Paragraph("Personal Information", ntt_heading_style))
+        personal_info = self._format_personal_info_pdf(context)
+        story.append(Paragraph(personal_info, styles['Normal']))
+        story.append(Spacer(1, 0.1*inch))
         
-        if context.get("databases"):
-            write_line("")
-            write_line("Databases", "Helvetica-Bold", 12, 18)
-            for db in context.get("databases", []):
-                write_line(f"- {db}")
+        # Content sections
+        sections = [
+            ("Professional Summary", "summary"),
+            ("Skills", "skills"),
+            ("Secondary Skills", "secondary_skills"),
+            ("Work Experience", "work_experience"),
+            ("Project Experience", "project_experience"),
+            ("Education", "education"),
+            ("Certifications", "certifications"),
+            ("Languages", "languages"),
+        ]
         
-        if context.get("domain_expertise"):
-            write_line("")
-            write_line("Domain Expertise", "Helvetica-Bold", 12, 18)
-            for domain in context.get("domain_expertise", []):
-                write_line(f"- {domain}")
-
-        if context.get("leadership_lines"):
-            write_line("")
-            write_line("Leadership & Impact", "Helvetica-Bold", 12, 18)
-            for line in context.get("leadership_lines", []):
-                for part in self._split_text(f"- {line}", 95):
-                    write_line(part)
+        for title, key in sections:
+            content = context.get(key, "")
+            if content:
+                story.append(Paragraph(title, ntt_heading_style))
+                story.append(Paragraph(str(content), styles['Normal']))
+                story.append(Spacer(1, 0.1*inch))
         
-        # Leadership dictionary format
-        leadership = context.get("leadership", {})
-        if leadership:
-            write_line("")
-            write_line("Leadership & Impact", "Helvetica-Bold", 12, 18)
-            for category, items in leadership.items():
-                if items:
-                    category_title = category.replace("_", " ").title()
-                    write_line(f"{category_title}:", "Helvetica-Bold", 11, 16)
-                    for item in items:
-                        for part in self._split_text(f"  • {item}", 93):
-                            write_line(part)
-        
-        if context.get("work_experience"):
-            write_line("")
-            write_line("Work Experience", "Helvetica-Bold", 12, 18)
-            for exp in context.get("work_experience", []):
-                if isinstance(exp, dict):
-                    title = exp.get("title", "")
-                    company = exp.get("company", "")
-                    duration = exp.get("duration", "")
-                    if title or company:
-                        write_line(f"{title} at {company}", "Helvetica-Bold", 11, 16)
-                    if duration:
-                        write_line(f"Duration: {duration}")
-                    if exp.get("responsibilities"):
-                        for resp in exp.get("responsibilities", []):
-                            for part in self._split_text(f"  • {resp}", 93):
-                                write_line(part)
-                    write_line("")
-                else:
-                    for part in self._split_text(f"• {exp}", 95):
-                        write_line(part)
-        
-        if context.get("project_experience"):
-            write_line("")
-            write_line("Project Experience", "Helvetica-Bold", 12, 18)
-            for proj in context.get("project_experience", []):
-                if isinstance(proj, dict):
-                    name = proj.get("project_name", "")
-                    role = proj.get("role", "")
-                    client = proj.get("client", "")
-                    duration = proj.get("duration", "")
-                    if name:
-                        write_line(name, "Helvetica-Bold", 11, 16)
-                    if role:
-                        write_line(f"Role: {role}")
-                    if client:
-                        write_line(f"Client: {client}")
-                    if duration:
-                        write_line(f"Duration: {duration}")
-                    if proj.get("description"):
-                        for part in self._split_text(proj.get("description"), 95):
-                            write_line(part)
-                    if proj.get("technologies"):
-                        techs = ", ".join(proj.get("technologies", []))
-                        for part in self._split_text(f"Technologies: {techs}", 95):
-                            write_line(part)
-                    write_line("")
-                else:
-                    for part in self._split_text(f"• {proj}", 95):
-                        write_line(part)
-        
-        certifications = context.get("certifications") or context.get("certifications_and_trainings", [])
-        if certifications:
-            write_line("")
-            write_line("Certifications & Training", "Helvetica-Bold", 12, 18)
-            for cert in certifications:
-                if isinstance(cert, dict):
-                    name = cert.get("name", "")
-                    issuer = cert.get("issuer", "")
-                    year = cert.get("year", "")
-                    if name:
-                        cert_text = name
-                        if issuer:
-                            cert_text += f" - {issuer}"
-                        if year:
-                            cert_text += f" ({year})"
-                        for part in self._split_text(f"• {cert_text}", 95):
-                            write_line(part)
-                else:
-                    for part in self._split_text(f"• {cert}", 95):
-                        write_line(part)
-        
-        if context.get("education"):
-            write_line("")
-            write_line("Education", "Helvetica-Bold", 12, 18)
-            for edu in context.get("education", []):
-                if isinstance(edu, dict):
-                    degree = edu.get("degree", "")
-                    institution = edu.get("institution", "")
-                    year = edu.get("year", "")
-                    if degree or institution:
-                        edu_text = degree
-                        if institution:
-                            edu_text += f" from {institution}" if degree else institution
-                        if year:
-                            edu_text += f" ({year})"
-                        for part in self._split_text(f"• {edu_text}", 95):
-                            write_line(part)
-                else:
-                    for part in self._split_text(f"• {edu}", 95):
-                        write_line(part)
-        
-        if context.get("publications"):
-            write_line("")
-            write_line("Publications", "Helvetica-Bold", 12, 18)
-            for pub in context.get("publications", []):
-                for part in self._split_text(f"• {pub}", 95):
-                    write_line(part)
-        
-        if context.get("awards"):
-            write_line("")
-            write_line("Awards & Recognition", "Helvetica-Bold", 12, 18)
-            for award in context.get("awards", []):
-                for part in self._split_text(f"• {award}", 95):
-                    write_line(part)
-        
-        if context.get("languages"):
-            write_line("")
-            write_line("Languages", "Helvetica-Bold", 12, 18)
-            langs = context.get("languages", [])
-            if isinstance(langs, list):
-                for lang in langs:
-                    if isinstance(lang, dict):
-                        name = lang.get("name", "")
-                        level = lang.get("proficiency", "")
-                        lang_text = name
-                        if level:
-                            lang_text += f" - {level}"
-                        write_line(f"• {lang_text}")
-                    else:
-                        write_line(f"• {lang}")
-
-        pdf.save()
+        # Build PDF
+        doc.build(story)
         buffer.seek(0)
         return buffer.read()
 
-    def _split_text(self, text: str, max_chars: int) -> list[str]:
-        words = str(text).split()
-        if not words:
-            return []
+    def _format_personal_info_pdf(self, context: Dict[str, Any]) -> str:
+        """Format personal information for PDF"""
+        info_fields = [
+            ("Name", "full_name"),
+            ("Employee ID", "employee_id"),
+            ("Email", "email"),
+            ("Contact", "contact_number"),
+            ("Title", "current_title"),
+            ("Grade", "grade"),
+            ("Location", "location"),
+            ("Organization", "organization"),
+            ("Experience", "experience"),
+            ("Target Role", "target_role"),
+        ]
+        
+        info_lines = []
+        for label, key in info_fields:
+            value = context.get(key, "")
+            if value:
+                info_lines.append(f"<b>{label}:</b> {value}")
+        
+        return "<br/>".join(info_lines)
+
+    def _render_fallback(self, context: Dict[str, Any]) -> bytes:
+        """Fallback text-based PDF rendering"""
+        # Create simple text content
         lines = []
-        current = []
-        for word in words:
-            trial = " ".join(current + [word])
-            if len(trial) <= max_chars:
-                current.append(word)
-            else:
-                lines.append(" ".join(current))
-                current = [word]
-        if current:
-            lines.append(" ".join(current))
-        return lines
+        lines.append("=== NTT DATA PROFESSIONAL CV ===\n")
+        
+        # Personal Information
+        lines.append("PERSONAL INFORMATION:")
+        info_fields = [
+            ("Name", "full_name"),
+            ("Employee ID", "employee_id"),
+            ("Email", "email"),
+            ("Contact", "contact_number"),
+            ("Title", "current_title"),
+            ("Grade", "grade"),
+            ("Location", "location"),
+            ("Organization", "organization"),
+            ("Experience", "experience"),
+            ("Target Role", "target_role"),
+        ]
+        
+        for label, key in info_fields:
+            value = context.get(key, "")
+            if value:
+                lines.append(f"{label}: {value}")
+        
+        lines.append("")
+        
+        # Content sections
+        content_sections = [
+            ("PROFESSIONAL SUMMARY", "summary"),
+            ("SKILLS", "skills"),
+            ("SECONDARY SKILLS", "secondary_skills"),
+            ("TOOLS & PLATFORMS", "tools_and_platforms"),
+            ("WORK EXPERIENCE", "work_experience"),
+            ("PROJECT EXPERIENCE", "project_experience"),
+            ("EDUCATION", "education"),
+            ("CERTIFICATIONS", "certifications"),
+            ("LANGUAGES", "languages"),
+            ("AWARDS", "awards"),
+            ("PUBLICATIONS", "publications"),
+        ]
+        
+        for section_title, key in content_sections:
+            content = context.get(key, "")
+            if content:
+                lines.append(f"{section_title}:")
+                lines.append(str(content))
+                lines.append("")
+        
+        # Convert to bytes (simplified fallback)
+        content_str = "\n".join(lines)
+        return content_str.encode('utf-8')

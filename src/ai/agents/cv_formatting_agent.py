@@ -61,9 +61,20 @@ class CVFormattingAgent:
             text += "."
         return text
 
-    def _format_skills(self, skills: List[str]) -> List[str]:
+    def _format_skills(self, skills) -> List[str]:
         clean = []
-        for skill in skills or []:
+        
+        # Handle different input types
+        if isinstance(skills, str):
+            # If it's a string, split by comma
+            skill_list = [s.strip() for s in skills.split(',')]
+        elif isinstance(skills, list):
+            skill_list = skills
+        else:
+            # Handle None or other types
+            skill_list = []
+        
+        for skill in skill_list:
             value = str(skill).strip()
             if value and value not in clean:
                 clean.append(value)

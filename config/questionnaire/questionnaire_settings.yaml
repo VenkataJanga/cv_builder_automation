@@ -1,0 +1,10 @@
+followups_enabled: true
+max_followups_per_question: 2
+question_order: fixed
+include_common_questions_first: true
+include_leadership_questions_for_senior_roles: true
+enable_role_specific_questions: true
+enable_optional_questions: true
+minimum_summary_word_count: 20
+minimum_business_outcome_word_count: 12
+minimum_skill_count: 5

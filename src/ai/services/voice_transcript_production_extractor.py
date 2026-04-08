@@ -380,3 +380,34 @@ def extract_single_project(text: str, project_num: str) -> Dict[str, Any]:
     for pattern in resp_patterns:
         resp_match = re.search(pattern, text, re.DOTALL)
         if resp_match:
+            resp_text = resp_match.group(1).strip()
+            # Split by common delimiters and clean
+            for resp in re.split(r'(?:and|,|\n)\s*', resp_text):
+                resp = resp.strip()
+                if resp and len(resp) > 10:  # Filter out short/meaningless fragments
+                    project["responsibilities"].append(resp)
+            break
+    
+    return project
+
+
+def extract_all_education(text: str) -> List[Dict[str, Any]]:
+    """Extract education details"""
+    education = []
+    
+    # Look for education section
+    edu_match = re.search(r'coming to my educational (?:background|qualification)[^\.]*?(.+?)(?:thank you|that\'s all|$)', text, re.DOTALL)
+    if edu_match:
+        edu_text = edu_match.group(1)
+        
+        # Extract degree info
+        degree_match = re.search(r'(?:i have completed|completed) ([^\.]+?)(?:from|in) ([^\.]+?)(?:\.|with)', edu_text)
+        if degree_match:
+            education.append({
+                "institution": degree_match.group(2).strip().title(),
+                "degree": degree_match.group(1).strip().title(),
+                "year": "",
+                "grade": ""
+            })
+    
+    return education

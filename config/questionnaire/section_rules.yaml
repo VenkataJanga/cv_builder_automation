@@ -1,14 +1,48 @@
-role_sections:
+mandatory_sections:
+  - personal_details
+  - summary
+  - skills
+  - work_experience
+  - project_experience
+  - certifications
+  - education
+
+optional_sections:
+  - publications
+  - awards
+  - languages
+
+role_specific_requirements:
   technical_manager:
-    - common_baseline
-    - leadership_impact
+    required_fields:
+      - architecture_experience
+      - team_size
+      - leadership_achievements
+      - business_outcomes
+
+  solution_architect:
+    required_fields:
+      - architecture_experience
+      - architecture_patterns
+      - cloud_experience
+      - business_outcomes
 
   project_manager:
-    - common_baseline
-    - leadership_impact
+    required_fields:
+      - methodologies
+      - stakeholder_management
 
   senior_team_lead:
-    - common_baseline
+    required_fields:
+      - project_types
+      - team_performance
 
-  general:
-    - common_baseline
+  delivery_head:
+    required_fields:
+      - delivery_size
+      - pnl_management
+
+  senior_hr:
+    required_fields:
+      - hr_specialization
+      - recruitment_experience

@@ -1,0 +1,18 @@
+rules:
+  - condition: short_answer
+    followup: Can you provide more details?
+
+  - condition: no_metrics
+    followup: Can you quantify that with measurable impact, percentage, savings, revenue, or efficiency improvement?
+
+  - condition: no_business_impact
+    followup: What was the business outcome or value delivered?
+
+  - condition: no_tools_mentioned
+    followup: Which tools, platforms, frameworks, or technologies did you use?
+
+  - condition: no_team_size
+    followup: What was the team size or delivery scope?
+
+  - condition: no_exact_role
+    followup: What was your exact role and responsibility in that engagement?
