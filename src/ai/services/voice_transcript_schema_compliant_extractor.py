@@ -42,8 +42,10 @@ def extract_from_voice_transcript(transcript: str) -> Dict[str, Any]:
     # Extract all sections
     result["header"] = extract_header(text)
     result["summary"] = extract_summary(text)
-    result["skills"] = extract_primary_skills(text)
-    result["secondary_skills"] = extract_secondary_skills(text)
+    result["skills"] = {
+        "primary_skills": extract_primary_skills(text),
+        "secondary_skills": extract_secondary_skills(text)
+    }
     result["ai_frameworks"] = extract_ai_frameworks(text)
     result["cloud_platforms"] = extract_cloud_platforms(text)
     result["operating_systems"] = extract_operating_systems(text)

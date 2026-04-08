@@ -285,6 +285,18 @@ pytest tests/test_chat.py
 pytest --cov=src
 ```
 
+### Browser Preview Renderer Test
+
+A lightweight browser-based test harness is available for validating the client preview renderer:
+
+1. Open `demo-ui/preview-renderer-test.html` in your browser.
+2. The page will instantiate `demo-ui/app.js` in test mode and verify that preview HTML renders:
+   - full name
+   - current title
+   - professional summary
+   - education entries
+3. The page displays pass/fail status and renders the generated preview output.
+
 ### Code Structure
 
 - **Domain Layer** (`src/domain/`) - Business entities and interfaces

@@ -39,8 +39,10 @@ class TranscriptCVParser:
 
         # Extract each section
         result["header"] = self._extract_header(transcript)
-        result["skills"] = self._extract_primary_skills(transcript)
-        result["secondary_skills"] = self._extract_secondary_skills(transcript)
+        result["skills"] = {
+            "primary_skills": self._extract_primary_skills(transcript),
+            "secondary_skills": self._extract_secondary_skills(transcript)
+        }
         result["ai_frameworks"] = self._extract_ai_frameworks(transcript)
         result["cloud_platforms"] = self._extract_cloud_platforms(transcript)
         result["operating_systems"] = self._extract_operating_systems(transcript)

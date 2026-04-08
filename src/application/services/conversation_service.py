@@ -10,7 +10,7 @@ from src.ai.services.llm_enhancement_service import LLMEnhancementService
 from src.ai.services.langsmith_service import LangSmithService
 from src.questionnaire.answer_analyzer import AnswerAnalyzer
 from src.questionnaire.followup_engine import FollowupEngine
-from src.questionnaire.question_selector import select_questions
+from src.questionnaire.question_selector import select_initial_questions, select_questions
 from src.questionnaire.role_resolver import resolve_role
 
 
@@ -29,18 +29,20 @@ class ConversationService:
 
     def start_session(self) -> Dict[str, Any]:
         session_id = str(uuid4())
+        initial_questions = select_initial_questions()
+
         SESSION_STORE[session_id] = {
             "session_id": session_id,
-            "step": "role",
+            "step": "initial",
             "role": None,
             "answers": {},
-            "questions": [],
+            "questions": initial_questions,
             "current_index": 0,
             "cv_data": self.cv_builder_service.initialize_cv_data(),
         }
         return {
             "session_id": session_id,
-            "question": "What is your current role/title?",
+            "question": initial_questions[0] if initial_questions else "What is your full name?",
         }
 
     def submit_answer(self, session_id: str, answer: str) -> Dict[str, Any]:
@@ -48,6 +50,55 @@ class ConversationService:
             return {"error": "Invalid session_id"}
 
         session = SESSION_STORE[session_id]
+
+        if session["step"] == "initial":
+            idx = session["current_index"]
+            questions = session["questions"]
+            current_question = questions[idx]
+
+            session["answers"][current_question] = answer
+            session["cv_data"] = self.cv_builder_service.update_from_answer(
+                session["cv_data"],
+                current_question,
+                answer,
+            )
+
+            session["current_index"] += 1
+
+            # If the current question was the role question, resolve the role and seed CV data
+            if current_question.strip().lower() == "what is your current role/title?":
+                role = resolve_role(answer)
+                session["role"] = role
+                session["cv_data"] = self.cv_builder_service.apply_role_seed(session["cv_data"], answer)
+
+            if session["current_index"] < len(questions):
+                return {
+                    "session_id": session_id,
+                    "question": questions[session["current_index"]],
+                    "cv_data": session["cv_data"],
+                }
+
+            # Move to role-specific questions after initial onboarding
+            role = session.get("role") or resolve_role(answer)
+            session["role"] = role
+            role_questions = select_questions(role)
+            asked_questions = {q.strip().lower() for q in session["answers"].keys()}
+            session["questions"] = [q for q in role_questions if q.strip().lower() not in asked_questions]
+            session["step"] = "questions"
+            session["current_index"] = 0
+
+            if not session["questions"]:
+                return {
+                    "session_id": session_id,
+                    "message": "I have no role-specific questions right now. You can continue by sharing more details or uploading your CV.",
+                    "cv_data": session["cv_data"],
+                }
+
+            return {
+                "session_id": session_id,
+                "question": session["questions"][0],
+                "cv_data": session["cv_data"],
+            }
 
         if session["step"] == "role":
             role = resolve_role(answer)

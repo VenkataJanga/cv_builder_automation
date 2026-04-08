@@ -35,8 +35,10 @@ class VoiceTranscriptFixedExtractor:
         cv_data = {
             "header": header,
             "summary": summary,
-            "skills": skills_data.get("primary_skills", []),
-            "secondary_skills": skills_data.get("secondary_skills", []),
+            "skills": {
+                "primary_skills": skills_data.get("primary_skills", []),
+                "secondary_skills": skills_data.get("secondary_skills", [])
+            },
             "tools_and_platforms": skills_data.get("tools_platforms", []),
             "ai_frameworks": skills_data.get("ai_frameworks", []),
             "cloud_platforms": skills_data.get("cloud_platforms", []),

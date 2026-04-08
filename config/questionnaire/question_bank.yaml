@@ -1,15 +1,25 @@
-common:
-  - id: q_common_001
+initial:
+  - id: q_initial_001
     section: personal_details
     field: full_name
     question: What is your full name?
     required: true
     order: 1
 
+  - id: q_initial_002
+    section: personal_details
+    field: current_title
+    question: What is your current role/title?
+    required: true
+    order: 2
+
+common:
   - id: q_common_002
     section: personal_details
     field: employee_id
     question: What is your employee or portal ID?
+    required: false
+    order: 2
     required: false
     order: 2
 

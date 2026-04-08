@@ -1,6 +1,6 @@
 // CV Builder Automation - Comprehensive JavaScript Implementation
 class CVBuilderApp {
-    constructor() {
+    constructor({ autoInit = true } = {}) {
         this.apiBase = 'http://localhost:8000';
         this.currentSessionId = null;
         this.mediaRecorder = null;
@@ -8,7 +8,9 @@ class CVBuilderApp {
         this.isRecording = false;
         this.currentCVData = null;
         
-        this.init();
+        if (autoInit) {
+            this.init();
+        }
     }
 
     init() {
@@ -92,8 +94,34 @@ class CVBuilderApp {
         });
     }
 
-    initializeChat() {
-        this.addChatMessage("Hello! I'm here to help you build your CV. You can upload documents, record audio, or chat with me to build your CV step by step. How would you like to start?", 'bot');
+    async initializeChat() {
+        this.addChatMessage("Hello! I'm here to help you build your CV. Let's begin with a few guided questions.", 'bot');
+        await this.createConversationSession();
+    }
+
+    async createConversationSession() {
+        try {
+            const response = await fetch(`${this.apiBase}/chat/conversations/session`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({}),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                this.currentSessionId = data.session_id;
+                this.currentCVData = data.cv_data || {};
+                this.updateSessionDisplay(data.session_id);
+                if (data.question) {
+                    this.addChatMessage(data.question, 'bot');
+                }
+                this.refreshCVPreview();
+            } else {
+                throw new Error('Failed to create chat session');
+            }
+        } catch (error) {
+            this.showNotification('Failed to start conversation: ' + error.message, 'error');
+        }
     }
 
     async checkServerStatus() {
@@ -315,6 +343,14 @@ class CVBuilderApp {
         
         if (!message) return;
 
+        if (!this.currentSessionId) {
+            await this.createConversationSession();
+            if (!this.currentSessionId) {
+                this.showNotification('Unable to start the conversation session.', 'error');
+                return;
+            }
+        }
+
         this.addChatMessage(message, 'user');
         input.value = '';
 
@@ -324,7 +360,7 @@ class CVBuilderApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     message, 
-                    session_id: this.currentSessionId || 'default-session' 
+                    session_id: this.currentSessionId
                 })
             });
 
@@ -371,10 +407,10 @@ class CVBuilderApp {
             .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
     }
 
-    refreshCVPreview() {
+    async refreshCVPreview() {
         const preview = document.getElementById('cvPreview');
         
-        if (!this.currentCVData || Object.keys(this.currentCVData).length === 0) {
+        if (!this.currentSessionId) {
             preview.innerHTML = `
                 <div class="preview-placeholder">
                     <p>Your CV data will appear here as you build it</p>
@@ -384,40 +420,90 @@ class CVBuilderApp {
             return;
         }
 
-        const html = this.generateCVHTML(this.currentCVData);
-        preview.innerHTML = `<div class="cv-data">${html}</div>`;
+        try {
+            const response = await fetch(`${this.apiBase}/preview/${this.currentSessionId}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            console.log('DEBUG: Preview API response:', data);
+            
+            if (data.preview) {
+                const html = this.generateCVHTML(data.preview);
+                preview.innerHTML = `<div class="cv-data">${html}</div>`;
+            } else {
+                preview.innerHTML = `
+                    <div class="preview-placeholder">
+                        <p>No preview data available</p>
+                    </div>
+                `;
+            }
+        } catch (error) {
+            console.error('Error fetching preview:', error);
+            preview.innerHTML = `
+                <div class="preview-placeholder">
+                    <p>Error loading preview. Please try again.</p>
+                </div>
+            `;
+        }
     }
 
     generateCVHTML(cvData) {
         let html = '';
 
         // Header
-        if (cvData.header) {
+        const profile = cvData.header || cvData.personal_details || {};
+        if (profile) {
             html += '<div class="cv-header">';
-            if (cvData.header.full_name) html += `<h1>${cvData.header.full_name}</h1>`;
-            if (cvData.header.current_title) html += `<h2>${cvData.header.current_title}</h2>`;
-            if (cvData.header.email) html += `<p>Email: ${cvData.header.email}</p>`;
-            if (cvData.header.contact_number) html += `<p>Phone: ${cvData.header.contact_number}</p>`;
-            if (cvData.header.location) html += `<p>Location: ${cvData.header.location}</p>`;
+            if (profile.full_name) html += `<h1>${profile.full_name}</h1>`;
+            if (profile.current_title) html += `<h2>${profile.current_title}</h2>`;
+            if (profile.current_organization) html += `<p><strong>Organization:</strong> ${profile.current_organization}</p>`;
+            if (profile.total_experience) html += `<p><strong>Experience:</strong> ${profile.total_experience} years</p>`;
+            if (profile.employee_id) html += `<p><strong>Employee ID:</strong> ${profile.employee_id}</p>`;
+            if (profile.email) html += `<p><strong>Email:</strong> ${profile.email}</p>`;
+            if (profile.location) html += `<p><strong>Location:</strong> ${profile.location}</p>`;
             html += '</div>';
         }
 
         // Summary
-        if (cvData.summary) {
-            html += `<h3>Professional Summary</h3><p>${cvData.summary}</p>`;
+        const summaryValue = cvData.summary?.professional_summary
+            ?? cvData.summary?.summary
+            ?? cvData.summary;
+
+        const extractSummaryText = (value) => {
+            if (typeof value === 'string') return value;
+            if (Array.isArray(value)) {
+                return value.map(extractSummaryText).filter(Boolean).join(' ');
+            }
+            if (value && typeof value === 'object') {
+                return Object.values(value)
+                    .map(extractSummaryText)
+                    .filter(Boolean)
+                    .join(' ');
+            }
+            return '';
+        };
+
+        let summaryText = extractSummaryText(summaryValue).trim();
+        if (summaryText) {
+            html += `<h3>Professional Summary</h3><p>${summaryText}</p>`;
         }
 
         // Skills
-        if (cvData.skills && cvData.skills.length > 0) {
+        const skills = Array.isArray(cvData.skills)
+            ? cvData.skills
+            : cvData.skills?.primary_skills || [];
+        if (skills && skills.length > 0) {
             html += `<h3>Primary Skills</h3><ul>`;
-            cvData.skills.forEach(skill => html += `<li>${skill}</li>`);
+            skills.forEach(skill => html += `<li>${skill}</li>`);
             html += `</ul>`;
         }
 
         // Secondary Skills
-        if (cvData.secondary_skills && cvData.secondary_skills.length > 0) {
+        const secondarySkills = cvData.skills?.secondary_skills || cvData.secondary_skills || [];
+        if (secondarySkills && secondarySkills.length > 0) {
             html += `<h3>Secondary Skills</h3><ul>`;
-            cvData.secondary_skills.forEach(skill => html += `<li>${skill}</li>`);
+            secondarySkills.forEach(skill => html += `<li>${skill}</li>`);
             html += `</ul>`;
         }
 
@@ -455,16 +541,29 @@ class CVBuilderApp {
         }
 
         // Education
-        if (cvData.education && cvData.education.length > 0) {
+        const educationEntries = Array.isArray(cvData.education)
+            ? cvData.education
+            : cvData.education
+                ? [cvData.education]
+                : [];
+        if (educationEntries.length > 0) {
             html += `<h3>Education</h3>`;
-            cvData.education.forEach(edu => {
+            educationEntries.forEach(edu => {
                 html += `<div class="education-item">`;
-                if (edu.qualification) html += `<h4>${edu.qualification}</h4>`;
-                if (edu.specialization) html += `<p><strong>Specialization:</strong> ${edu.specialization}</p>`;
-                if (edu.college) html += `<p><strong>College:</strong> ${edu.college}</p>`;
-                if (edu.university) html += `<p><strong>University:</strong> ${edu.university}</p>`;
-                if (edu.year_of_passing) html += `<p><strong>Year:</strong> ${edu.year_of_passing}</p>`;
-                if (edu.percentage) html += `<p><strong>Score:</strong> ${edu.percentage}</p>`;
+                if (typeof edu === 'string') {
+                    html += `<p>${edu}</p>`;
+                } else {
+                    const qualification = edu.qualification || edu.degree || edu.title || '';
+                    if (qualification) html += `<h4>${qualification}</h4>`;
+                    if (edu.specialization) html += `<p><strong>Specialization:</strong> ${edu.specialization}</p>`;
+                    if (edu.college) html += `<p><strong>College:</strong> ${edu.college}</p>`;
+                    if (edu.institution) html += `<p><strong>Institution:</strong> ${edu.institution}</p>`;
+                    if (edu.university) html += `<p><strong>University:</strong> ${edu.university}</p>`;
+                    if (edu.year_of_passing) html += `<p><strong>Year:</strong> ${edu.year_of_passing}</p>`;
+                    if (edu.year) html += `<p><strong>Year:</strong> ${edu.year}</p>`;
+                    if (edu.percentage) html += `<p><strong>Score:</strong> ${edu.percentage}</p>`;
+                    if (edu.grade) html += `<p><strong>Grade:</strong> ${edu.grade}</p>`;
+                }
                 html += `</div>`;
             });
         }
@@ -479,6 +578,13 @@ class CVBuilderApp {
         if (cvData.databases && cvData.databases.length > 0) {
             html += `<h3>Databases</h3><ul>`;
             cvData.databases.forEach(db => html += `<li>${db}</li>`);
+            html += `</ul>`;
+        }
+
+        const toolsPlatforms = cvData.skills?.tools_and_platforms || cvData.tools_and_platforms || [];
+        if (toolsPlatforms && toolsPlatforms.length > 0) {
+            html += `<h3>Tools, Platforms & Operating Systems</h3><ul>`;
+            toolsPlatforms.forEach(item => html += `<li>${item}</li>`);
             html += `</ul>`;
         }
 
@@ -664,7 +770,9 @@ class CVBuilderApp {
     }
 }
 
-// Initialize the application when DOM is loaded
+// Expose the application class for browser-based tests and instantiate normally in production
+window.CVBuilderApp = CVBuilderApp;
+
 document.addEventListener('DOMContentLoaded', () => {
     new CVBuilderApp();
 });

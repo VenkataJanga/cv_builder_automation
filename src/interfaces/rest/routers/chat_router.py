@@ -21,27 +21,40 @@ async def chat(request: ChatRequest):
     Chat endpoint for conversational CV building
     """
     try:
-        # If no session_id provided, create a new session
+        # If no session_id provided, create a new session and return the first question
         if not request.session_id or request.session_id == "default-session":
             session = conversation_service.start_session()
             session_id = session.get("session_id")
-        else:
-            session_id = request.session_id
-            session = conversation_service.get_session(session_id)
-            if "error" in session:
-                # Session doesn't exist, create a new one
-                session = conversation_service.start_session()
-                session_id = session.get("session_id")
+            return {
+                "bot": session.get("question"),
+                "session_id": session_id,
+                "cv_data": session.get("cv_data", {}),
+                "status": "success"
+            }
+
+        session_id = request.session_id
+        session = conversation_service.get_session(session_id)
+        if "error" in session:
+            session = conversation_service.start_session()
+            session_id = session.get("session_id")
+            return {
+                "bot": session.get("question"),
+                "session_id": session_id,
+                "cv_data": session.get("cv_data", {}),
+                "status": "success"
+            }
 
         # Process the chat message using the conversation service
-        # For now, we'll use the submit_answer method which should handle chat-like interactions
         result = conversation_service.submit_answer(session_id, request.message)
         
-        # Get the updated session data
+        bot_text = result.get("bot") or result.get("question") or result.get("followup_question") or result.get("message") or result.get("response")
+        if not bot_text:
+            bot_text = "I understand. Let me help you build your CV. Can you tell me more details?"
+
         updated_session = conversation_service.get_session(session_id)
         
         return {
-            "bot": result.get("response", "I understand. Let me help you build your CV. Can you tell me more details?"),
+            "bot": bot_text,
             "session_id": session_id,
             "cv_data": updated_session.get("cv_data", {}),
             "status": "success"
@@ -66,7 +79,9 @@ async def create_conversation_session(request: dict = None):
         return {
             "session_id": session.get("session_id"),
             "status": "success",
-            "message": "Session created successfully"
+            "message": "Session created successfully",
+            "question": session.get("question"),
+            "cv_data": session.get("cv_data", {}),
         }
     except Exception as e:
         return {

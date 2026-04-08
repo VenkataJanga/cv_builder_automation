@@ -28,10 +28,7 @@ class CVFormattingAgent:
                 "contact_number": personal.get("contact_number", ""),
                 "grade": personal.get("grade", ""),
             },
-            "summary": self._format_summary(
-                summary.get("summary") if isinstance(summary, dict) 
-                else (summary if isinstance(summary, str) else cv_data.get("summary", ""))
-            ),
+            "summary": self._format_summary(self._extract_summary_text(summary, cv_data)),
             "skills": self._format_skills(skills.get("primary_skills", []) if isinstance(skills, dict) else cv_data.get("skills", [])),
             "secondary_skills": self._format_skills(skills.get("secondary_skills", []) if isinstance(skills, dict) else cv_data.get("secondary_skills", [])),
             "tools_and_platforms": self._format_skills(skills.get("tools_and_platforms", []) if isinstance(skills, dict) else cv_data.get("tools_and_platforms", [])),
@@ -51,6 +48,26 @@ class CVFormattingAgent:
             "languages": cv_data.get("languages", []),
             "schema_version": cv_data.get("schema_version", "1.0"),
         }
+
+    def _extract_summary_text(self, summary, cv_data: Dict[str, Any]) -> str:
+        def normalize_value(value):
+            if isinstance(value, str):
+                return value.strip()
+            if isinstance(value, list):
+                return " ".join(normalize_value(item) for item in value if item is not None)
+            if isinstance(value, dict):
+                return " ".join(
+                    normalize_value(v) for v in value.values() if v is not None
+                )
+            return ""
+
+        if isinstance(summary, (str, dict, list)):
+            return normalize_value(summary)
+
+        fallback = cv_data.get("summary")
+        if isinstance(fallback, (str, dict, list)):
+            return normalize_value(fallback)
+        return ""
 
     def _format_summary(self, text: str) -> str:
         text = (text or "").strip()

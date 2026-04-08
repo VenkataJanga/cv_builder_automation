@@ -17,7 +17,9 @@ def get_preview(session_id: str):
     if "error" in session:
         return session
 
+    print(f"DEBUG: Session cv_data: {session['cv_data']}")
     preview = preview_service.build_preview(session["cv_data"])
+    print(f"DEBUG: Preview result: {preview}")
     validation = validation_service.validate(session["cv_data"])
 
     return {

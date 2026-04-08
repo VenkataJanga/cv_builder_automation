@@ -13,9 +13,19 @@ class ValidationService:
 
         quality = check_quality(cv_data)
 
+        summary_text = self._extract_summary_text(cv_data)
+        
+        # Handle skills as list or dict
+        skills = cv_data.get("skills", {})
+        skills_present = False
+        if isinstance(skills, list):
+            skills_present = bool(skills)
+        elif isinstance(skills, dict):
+            skills_present = bool(skills.get("primary_skills"))
+        
         section_scores = {
-            "summary_score": 100 if cv_data.get("summary", {}).get("professional_summary") else 0,
-            "skills_score": 100 if cv_data.get("skills", {}).get("primary_skills") else 0,
+            "summary_score": 100 if summary_text else 0,
+            "skills_score": 100 if skills_present else 0,
             "leadership_score": 100 if cv_data.get("leadership") else 40,
         }
 
@@ -39,7 +49,7 @@ class ValidationService:
     def _compute_confidence(self, cv_data: dict) -> dict:
         personal = cv_data.get("personal_details", {})
         skills = cv_data.get("skills", {})
-        summary = cv_data.get("summary", {}).get("professional_summary", "")
+        summary = self._extract_summary_text(cv_data)
         leadership = cv_data.get("leadership", {})
         
         personal_score = 90 if personal else 30
@@ -56,3 +66,17 @@ class ValidationService:
             "leadership_confidence": leadership_score / 100,
             "overall_score": overall_score,
         }
+
+    def _extract_summary_text(self, cv_data: dict) -> str:
+        summary = cv_data.get("summary", "")
+        if isinstance(summary, dict):
+            return str(summary.get("professional_summary", "")).strip()
+        if isinstance(summary, list):
+            parts = []
+            for item in summary:
+                if isinstance(item, dict):
+                    parts.append(str(item.get("professional_summary", "")).strip())
+                else:
+                    parts.append(str(item).strip())
+            return " ".join([part for part in parts if part]).strip()
+        return str(summary).strip()

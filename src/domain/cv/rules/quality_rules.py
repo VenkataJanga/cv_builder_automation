@@ -2,7 +2,18 @@ def check_quality(cv_data: dict) -> dict:
     warnings = []
     suggestions = []
 
-    summary = cv_data.get("summary", {}).get("professional_summary", "")
+    summary = cv_data.get("summary", "")
+    if isinstance(summary, dict):
+        summary = str(summary.get("professional_summary", ""))
+    elif isinstance(summary, list):
+        summary = " ".join(
+            str(item.get("professional_summary", "")) if isinstance(item, dict) else str(item)
+            for item in summary
+        )
+    else:
+        summary = str(summary)
+
+    summary = summary.strip()
     if summary and len(summary.split()) < 8:
         warnings.append("Professional summary is very short.")
         suggestions.append("Expand summary to include role, strengths, and impact.")

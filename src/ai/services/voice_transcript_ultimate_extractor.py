@@ -28,8 +28,10 @@ class VoiceTranscriptUltimateExtractor:
         result = {
             "header": self._extract_header(text),
             "summary": self._extract_summary(text),
-            "skills": self._extract_skills(text, "primary"),
-            "secondary_skills": self._extract_skills(text, "secondary"),
+            "skills": {
+                "primary_skills": self._extract_skills(text, "primary"),
+                "secondary_skills": self._extract_skills(text, "secondary")
+            },
             "tools_and_platforms": self._extract_tools(text),
             "ai_frameworks": self._extract_ai_frameworks(text),
             "cloud_platforms": self._extract_cloud_platforms(text),

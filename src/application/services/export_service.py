@@ -1,3 +1,4 @@
+from src.application.services.preview_service import PreviewService
 from src.infrastructure.rendering.template_engine import TemplateEngine
 from src.infrastructure.rendering.docx_renderer import DocxRenderer
 from src.infrastructure.rendering.pdf_renderer import PdfRenderer
@@ -5,6 +6,7 @@ from src.infrastructure.rendering.pdf_renderer import PdfRenderer
 
 class ExportService:
     def __init__(self) -> None:
+        self.preview_service = PreviewService()
         self.template_engine = TemplateEngine()
         self.docx_renderer = DocxRenderer()
         self.pdf_renderer = PdfRenderer()
@@ -23,6 +25,9 @@ class ExportService:
         Returns:
             DOCX file as bytes
         """
+        # Normalize CV data through preview formatting so export matches UI preview
+        cv_data = self._normalize_cv_data(cv_data)
+
         # For DOCX export, bypass template engine to preserve structured data
         # The DOCX renderer has its own field mapping and table population logic
         context = self._prepare_docx_context(cv_data)
@@ -30,6 +35,7 @@ class ExportService:
         # Create renderer with template style
         renderer = DocxRenderer(template_style=template_style)
         return renderer.render(context)
+
     def export_pdf(self, cv_data: dict, template_style: str = "standard") -> bytes:
         """
         Export CV as PDF with template style selection.
@@ -41,9 +47,22 @@ class ExportService:
         Returns:
             PDF file as bytes
         """
+        cv_data = self._normalize_cv_data(cv_data)
         context = self.template_engine.render_context(cv_data)
         # PDF rendering can also support template styles
         return self.pdf_renderer.render(context, template_style=template_style)
+
+    def _normalize_cv_data(self, cv_data: dict) -> dict:
+        """Normalize raw CV data into the same preview-ready format used by the UI."""
+        if not isinstance(cv_data, dict):
+            return cv_data
+        try:
+            normalized = self.preview_service.build_preview(cv_data)
+            if isinstance(normalized, dict) and normalized:
+                return normalized
+        except Exception:
+            pass
+        return cv_data
 
     def _prepare_docx_context(self, cv_data: dict) -> dict:
         """Prepare context specifically for DOCX rendering without losing structured data"""
@@ -192,7 +211,6 @@ class ExportService:
         formatted = []
         for achievement in achievements:
             if isinstance(achievement, str) and achievement.strip():
-                # Add bullet point if not already present
                 achievement_text = achievement.strip()
                 if not achievement_text.startswith("•"):
                     achievement_text = f"• {achievement_text}"
@@ -203,13 +221,15 @@ class ExportService:
     def _format_core_competencies(self, cv_data: dict) -> str:
         """Format core competencies/skills as bullet-point text"""
         skills = cv_data.get("skills", [])
+        if isinstance(skills, dict):
+            skills = skills.get("primary_skills", []) or skills.get("secondary_skills", []) or []
+
         if not skills:
             return ""
         
         if isinstance(skills, str):
             skills = [s.strip() for s in skills.split(",") if s.strip()]
         
-        # Format as bullet points
         formatted = []
         for skill in skills:
             if isinstance(skill, str) and skill.strip():
@@ -221,22 +241,25 @@ class ExportService:
         """Format all technical skills into organized categories with optional proficiency levels"""
         sections = []
         
-        # Primary Skills (with proficiency support)
         skills = cv_data.get("skills", [])
+        if isinstance(skills, dict):
+            skills = skills.get("primary_skills", [])
         if skills:
             skills_text = self._format_skills_for_docx(skills)
             if skills_text:
                 sections.append(f"Primary Skills: {skills_text}")
         
-        # Secondary Skills (with proficiency support)
         secondary = cv_data.get("secondary_skills", [])
+        if not secondary and isinstance(cv_data.get("skills"), dict):
+            secondary = cv_data.get("skills", {}).get("secondary_skills", [])
         if secondary:
             sec_text = self._format_skills_for_docx(secondary)
             if sec_text:
                 sections.append(f"Secondary Skills: {sec_text}")
         
-        # Tools & Platforms
         tools = cv_data.get("tools_and_platforms", [])
+        if not tools and isinstance(cv_data.get("skills"), dict):
+            tools = cv_data.get("skills", {}).get("tools_and_platforms", [])
         if tools:
             if isinstance(tools, list):
                 tools_text = ", ".join(str(t) for t in tools if str(t).strip())
@@ -245,15 +268,17 @@ class ExportService:
             if tools_text:
                 sections.append(f"Tools & Platforms: {tools_text}")
         
-        # AI Frameworks (with proficiency support)
         ai = cv_data.get("ai_frameworks", [])
+        if not ai and isinstance(cv_data.get("skills"), dict):
+            ai = cv_data.get("skills", {}).get("ai_frameworks", [])
         if ai:
             ai_text = self._format_skills_for_docx(ai)
             if ai_text:
                 sections.append(f"AI Frameworks: {ai_text}")
         
-        # Cloud Platforms
         cloud = cv_data.get("cloud_platforms", [])
+        if not cloud and isinstance(cv_data.get("skills"), dict):
+            cloud = cv_data.get("skills", {}).get("cloud_platforms", [])
         if cloud:
             if isinstance(cloud, list):
                 cloud_text = ", ".join(str(c) for c in cloud if str(c).strip())
@@ -262,8 +287,9 @@ class ExportService:
             if cloud_text:
                 sections.append(f"Cloud Platforms: {cloud_text}")
         
-        # Databases
         databases = cv_data.get("databases", [])
+        if not databases and isinstance(cv_data.get("skills"), dict):
+            databases = cv_data.get("skills", {}).get("databases", [])
         if databases:
             if isinstance(databases, list):
                 db_text = ", ".join(str(d) for d in databases if str(d).strip())
@@ -272,8 +298,9 @@ class ExportService:
             if db_text:
                 sections.append(f"Databases: {db_text}")
         
-        # Operating Systems
         os_list = cv_data.get("operating_systems", [])
+        if not os_list and isinstance(cv_data.get("skills"), dict):
+            os_list = cv_data.get("skills", {}).get("operating_systems", [])
         if os_list:
             if isinstance(os_list, list):
                 os_text = ", ".join(str(o) for o in os_list if str(o).strip())
@@ -282,8 +309,9 @@ class ExportService:
             if os_text:
                 sections.append(f"Operating Systems: {os_text}")
         
-        # Domain Expertise
         domain = cv_data.get("domain_expertise", [])
+        if not domain and isinstance(cv_data.get("skills"), dict):
+            domain = cv_data.get("skills", {}).get("domain_expertise", [])
         if domain:
             if isinstance(domain, list):
                 domain_text = ", ".join(str(d) for d in domain if str(d).strip())

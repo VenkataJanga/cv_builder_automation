@@ -53,8 +53,10 @@ class EnhancedTranscriptParser:
         
         # Extract skills from Core Competencies section OR natural language
         skills_data = self._extract_skills(enhanced_transcript)
-        result["skills"] = skills_data.get("primary_skills", [])
-        result["secondary_skills"] = skills_data.get("secondary_skills", [])
+        result["skills"] = {
+            "primary_skills": skills_data.get("primary_skills", []),
+            "secondary_skills": skills_data.get("secondary_skills", [])
+        }
         result["tools_and_platforms"] = skills_data.get("tools_platforms", [])
         result["ai_frameworks"] = skills_data.get("ai_frameworks", [])
         result["cloud_platforms"] = skills_data.get("cloud_platforms", [])

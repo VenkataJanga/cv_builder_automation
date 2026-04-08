@@ -39,8 +39,10 @@ class TranscriptCVParser:
 
         # Extract each section
         result["header"] = self._extract_header(transcript)
-        result["skills"] = self._extract_primary_skills(transcript)
-        result["secondary_skills"] = self._extract_secondary_skills(transcript)
+        result["skills"] = {
+            "primary_skills": self._extract_primary_skills(transcript),
+            "secondary_skills": self._extract_secondary_skills(transcript)
+        }
         result["ai_frameworks"] = self._extract_ai_frameworks(transcript)
         result["cloud_platforms"] = self._extract_cloud_platforms(transcript)
         result["operating_systems"] = self._extract_operating_systems(transcript)
@@ -49,7 +51,7 @@ class TranscriptCVParser:
         result["employment"] = self._extract_employment(transcript)
         result["project_experience"] = self._extract_projects(transcript)
         result["education"] = self._extract_education(transcript)
-        result["summary"] = self._generate_summary(result)
+        result["summary"] = self._extract_summary(transcript) or self._generate_summary(result)
 
         return result
 
@@ -555,51 +557,40 @@ class TranscriptCVParser:
         
         # FIXED: Extract Master's degree - completely rewritten with actual voice patterns
         master_patterns = [
-            r"(?:i\s+have\s+)?completed\s+(?:a\s+)?master(?:'?s)?\s+of\s+computer\s+applications?\s+in\s+([^.,]+?)\s+(?:from\s+)?([^.,]+?)\s+(?:at\s+|from\s+)?([^.,]+?)[.,]\s*(?:the\s+)?year\s+of\s+passing\s+is\s+(\d{4})[.,]\s*(?:my\s+)?percentage\s+is\s+(\d+)",
-            r"master\s+of\s+computer\s+applications?.*?(?:college|institute).*?([^.,]{10,}?)(?:from|at)\s+([^.,]+?)[.,].*?year.*?(\d{4}).*?(\d+)\s*percentile",
+            r"(?:i\s+have\s+)?completed\s+(?:a\s+)?master(?:'?s)?\s+in\s+computer\s+science\s+applications?\.?\s*(?:the\s+)?branch\s+is\s+([^.,]+?)\.?\s*(?:my\s+)?year\s+of\s+passing\s+is\s+(\d{4})\.?\s*(?:the\s+)?name\s+of\s+(?:the\s+)?college\s+is\s+([^.,]+?)\.?\s*university\s+name\s+is\s+([^.,]+?)[.,]",
+            r"master\s+in\s+computer\s+science\s+applications?.*?branch.*?([^.,]+).*?year.*?(\d{4}).*?college.*?([^.,]+).*?university.*?([^.,]+)",
         ]
         
         for pattern in master_patterns:
             master_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
             if master_match:
                 groups = master_match.groups()
-                if len(groups) >= 5:
+                if len(groups) >= 4:
                     education.append({
-                        "qualification": "Master of Computer Applications (MCA)",
+                        "qualification": "Master in Computer Science Applications",
                         "specialization": groups[0].strip().title(),
-                        "college": groups[1].strip(),
-                        "university": groups[2].strip(),
-                        "year_of_passing": groups[3].strip(),
-                        "percentage": f"{groups[4].strip()}%"
+                        "college": groups[2].strip(),
+                        "university": groups[3].strip(),
+                        "year_of_passing": groups[1].strip(),
                     })
                 break
         
         # FIXED: Extract Bachelor's degree
         bachelor_patterns = [
-            r"(?:completed\s+)?bachelor(?:'?s)?\s+of\s+science.*?branch\s+is\s+([^.,]+)[.,].*?college.*?is\s+([^.,]+)[.,].*?(?:at\s+|from\s+)?([^.,]+?)[.,].*?year.*?(\d{4}).*?(?:i\s+got|percentage).*?(\d+)",
-            r"bachelor.*?computers.*?college[:\s]+([^.,]+).*?university[:\s]+([^.,]+).*?(\d{4}).*?(\d+)\s*percentile",
+            r"(?:my\s+second\s+educational\s+qualification\s+is\s+)?bachelor(?:'?s)?\s+of\s+science\.?\s*branch\s+is\s+([^.,]+)\.?\s*(?:my\s+)?college\s+name\s+is\s+([^.,]+)\.?\s*university\s+is\s+([^.,]+?)\.?\s*(?:i\s+got\s+)?(\d+)\s+percentage",
+            r"bachelor.*?computers.*?college[:\s]+([^.,]+).*?university[:\s]+([^.,]+).*?(\d+)\s*percentile",
         ]
         
         for pattern in bachelor_patterns:
             bachelor_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
             if bachelor_match:
                 groups = bachelor_match.groups()
-                if len(groups) >= 5:
+                if len(groups) >= 4:
                     education.append({
                         "qualification": "Bachelor of Science (B.Sc)",
                         "specialization": groups[0].strip().title(),
                         "college": groups[1].strip(),
                         "university": groups[2].strip(),
-                        "year_of_passing": groups[3].strip(),
-                        "percentage": f"{groups[4].strip()}%"
-                    })
-                elif len(groups) >= 4:
-                    education.append({
-                        "qualification": "Bachelor of Science (B.Sc)",
-                        "specialization": "Computers",
-                        "college": groups[0].strip(),
-                        "university": groups[1].strip(),
-                        "year_of_passing": groups[2].strip(),
                         "percentage": f"{groups[3].strip()}%"
                     })
                 break
@@ -627,26 +618,44 @@ class TranscriptCVParser:
         
         # FIXED: Extract 10th standard (SSC)
         tenth_patterns = [
-            r"(?:my\s+)?(?:secondary\s+school\s+)?(?:that\s+is\s+)?10th\s+standard.*?school.*?is\s+([^.,]+)[.,].*?(?:university.*?is|board).*?([^.,]+?)[.,].*?passing\s+year.*?(\d{4}).*?(?:got|percentage).*?(\d+)",
-            r"10th.*?school[:\s]+([^.,]+).*?board[:\s]+([^.,]+).*?year[:\s]+(\d{4}).*?(\d+)\s*percentage",
+            r"(?:i\s+have\s+)?completed\s+(?:my\s+)?10th\s+standard\.?\s*(?:my\s+)?school\s+name\s+is\s+([^.,]+)\.?\s*university\s+is\s+([^.,]+?)\.?\s*year\s+of\s+passing\s+is\s+(\d{4})",
+            r"10th.*?school[:\s]+([^.,]+).*?board[:\s]+([^.,]+).*?year[:\s]+(\d{4})",
         ]
         
         for pattern in tenth_patterns:
             tenth_match = re.search(pattern, edu_text, re.IGNORECASE | re.DOTALL)
             if tenth_match:
                 groups = tenth_match.groups()
-                if len(groups) >= 4:
+                if len(groups) >= 3:
                     education.append({
                         "qualification": "10th Standard (SSC)",
                         "specialization": "",
                         "college": groups[0].strip(),
                         "university": groups[1].strip(),
                         "year_of_passing": groups[2].strip(),
-                        "percentage": f"{groups[3].strip()}%"
                     })
                 break
         
         return education
+
+    def _extract_summary(self, text: str) -> str:
+        """Extract professional summary from transcript"""
+        # Look for the answer to professional profile question
+        patterns = [
+            r"how would you describe your professional profile in 2-3 lines\?\s*(.+?)(?:\n|$)",
+            r"professional profile.*?2-3 lines\?\s*(.+?)(?:\n|$)",
+            r"describe your professional profile.*?\?\s*(.+?)(?:\n|$)",
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            if match:
+                summary = match.group(1).strip()
+                # Clean up the summary
+                summary = re.sub(r'^(urrent|current)', '', summary, flags=re.IGNORECASE).strip()
+                return summary
+        
+        return ""
 
     def _generate_summary(self, parsed_data: Dict[str, Any]) -> str:
         """Generate professional summary from parsed data"""
