@@ -6,8 +6,8 @@ from io import BytesIO
 
 from src.application.services.conversation_service import ConversationService
 from src.application.services.preview_service import PreviewService
+from src.application.services.export_service import ExportService
 from src.infrastructure.rendering.template_engine import TemplateEngine
-from src.infrastructure.rendering.docx_renderer import DocxRenderer
 from src.infrastructure.rendering.pdf_renderer import PdfRenderer
 
 # router MUST be defined before any @router.get / @router.post decorators
@@ -15,8 +15,8 @@ router = APIRouter(prefix="/export", tags=["export"])
 
 conversation_service = ConversationService()
 preview_service = PreviewService()
+export_service = ExportService()
 template_engine = TemplateEngine()
-docx_renderer = DocxRenderer()
 pdf_renderer = PdfRenderer()
 
 
@@ -39,12 +39,8 @@ def export_docx_get(session_id: str, template_style: str = "standard"):
     if "error" in session:
         return session
 
-    # Use template engine to properly format the data for rendering
-    context = template_engine.render_context(session["cv_data"])
-    
-    # Create renderer with specified template style
-    renderer = DocxRenderer(template_name="standard_nttdata", template_style=template_style)
-    docx_bytes = renderer.render(context)
+    # Use DOCX export service to preserve structured data and formatted sections
+    docx_bytes = export_service.export_docx(session["cv_data"], template_style=template_style)
 
     return StreamingResponse(
         BytesIO(docx_bytes),
@@ -102,13 +98,9 @@ def export_docx_post(request: ExportRequest):
         cv_data = session["cv_data"]
         session_id = request.session_id
 
-    # Use template engine to properly format the data for rendering
-    context = template_engine.render_context(cv_data)
-    
-    # Create renderer with specified template style
+    # Use DOCX export service to preserve structured data and formatted sections
     template_style = request.template_style or "standard"
-    renderer = DocxRenderer(template_name="standard_nttdata", template_style=template_style)
-    docx_bytes = renderer.render(context)
+    docx_bytes = export_service.export_docx(cv_data, template_style=template_style)
 
     return StreamingResponse(
         BytesIO(docx_bytes),

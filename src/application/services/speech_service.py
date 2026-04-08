@@ -1,5 +1,6 @@
 from src.ai.factories.speech_factory import get_speech_provider
 from src.ai.services.llm_enhancement_service import LLMEnhancementService
+from src.application.services.hybrid_extraction_service import HybridExtractionService
 from src.infrastructure.parsers.transcript_normalizer import TranscriptNormalizer
 from src.infrastructure.parsers.transcript_cv_parser_fixed import TranscriptCVParser
 from src.infrastructure.parsers.enhanced_transcript_parser import EnhancedTranscriptParser
@@ -12,6 +13,7 @@ class SpeechService:
         self.llm_enhancement_service = LLMEnhancementService()
         self.cv_parser = TranscriptCVParser()  # Keep for fallback
         self.enhanced_parser = EnhancedTranscriptParser()  # New structured parser
+        self.hybrid_extraction_service = HybridExtractionService()  # Production-grade voice extraction
 
     def transcribe(self, file_path: str, language: str | None = None) -> dict:
         raw_transcript = self.provider.transcribe_file(file_path=file_path, language=language)
@@ -50,7 +52,7 @@ class SpeechService:
     def _extract_cv_data(self, enhanced_transcript: str) -> dict:
         """
         Extract CV data using the appropriate parser based on transcript structure.
-        Uses enhanced parser for structured transcripts, falls back to original parser.
+        Uses enhanced parser for structured transcripts, and production-grade hybrid extraction for voice transcripts.
         """
         # Try the enhanced parser first for structured transcripts
         if self._is_structured_transcript(enhanced_transcript):
@@ -60,8 +62,8 @@ class SpeechService:
             if not self.enhanced_parser.low_confidence(extracted_data):
                 return extracted_data
         
-        # Fallback to original parser for unstructured text
-        return self.cv_parser.parse(enhanced_transcript)
+        # Use production-grade voice extraction for better project and domain capture
+        return self.hybrid_extraction_service.extract_from_voice(enhanced_transcript)
     
     def _is_structured_transcript(self, transcript: str) -> bool:
         """
