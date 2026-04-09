@@ -397,18 +397,49 @@ def extract_all_education(text: str) -> List[Dict[str, Any]]:
     education = []
     
     # Look for education section
-    edu_match = re.search(r'coming to my educational (?:background|qualification)[^\.]*?(.+?)(?:thank you|that\'s all|$)', text, re.DOTALL)
+    edu_match = re.search(r'coming to my educational (?:background|qualification|details)[^\.]*?(.+?)(?:thank you|that\'s all|$)', text, re.DOTALL)
     if edu_match:
         edu_text = edu_match.group(1)
         
-        # Extract degree info
-        degree_match = re.search(r'(?:i have completed|completed) ([^\.]+?)(?:from|in) ([^\.]+?)(?:\.|with)', edu_text)
-        if degree_match:
+        # Extract individual education entries with specific patterns
+        # Master of Computer Applications
+        mca_match = re.search(r'i have completed a master of computer applications in (.+?from kakatiya university)\. the year of passing is (\d{4})\. my percentage is (\d+(?:\.\d+)?(?: percentile| percentage|%)?)', edu_text, re.IGNORECASE | re.DOTALL)
+        if mca_match:
             education.append({
-                "institution": degree_match.group(2).strip().title(),
-                "degree": degree_match.group(1).strip().title(),
+                "institution": mca_match.group(1).strip().title(),
+                "degree": "Master of Computer Applications",
+                "year": mca_match.group(2).strip(),
+                "grade": mca_match.group(3).strip()
+            })
+        
+        # Bachelor of Science
+        bsc_match = re.search(r'i have completed my bachelor of science, branch is ([^.]+?)\. my college name is ([^,]+?) at kakatiya university in.*?the year (\d{4}) and i got (\d+(?:\.\d+)?(?: percentile| percentage|%)?)\.', edu_text, re.IGNORECASE | re.DOTALL)
+        if bsc_match:
+            education.append({
+                "institution": f"{bsc_match.group(2).strip().title()}, Kakatiya University",
+                "degree": f"Bachelor of Science, {bsc_match.group(1).strip().title()}",
+                "year": bsc_match.group(3).strip(),
+                "grade": bsc_match.group(4).strip()
+            })
+        
+        # Intermediate (12th)
+        inter_match = re.search(r'i have completed intermediate education.*?branch is ([^,]+?)\. my college name is ([^,]+?)\. university name is ([^,]+?)\. my percentage is (\d+(?:\.\d+)?(?: percentile| percentage|%)?)', edu_text, re.IGNORECASE)
+        if inter_match:
+            education.append({
+                "institution": f"{inter_match.group(2).strip().title()}, {inter_match.group(3).strip().title()}",
+                "degree": f"Intermediate (12th), {inter_match.group(1).strip().title()}",
                 "year": "",
-                "grade": ""
+                "grade": inter_match.group(4).strip()
+            })
+        
+        # Secondary School (10th)
+        sec_match = re.search(r'my secondary school.*?my school name is ([^,]+?)\. university name is ([^,]+?)\. passing year is (\d{4})\. got (\d+(?:\.\d+)?(?: percentile| percentage|%)?)', edu_text, re.IGNORECASE)
+        if sec_match:
+            education.append({
+                "institution": f"{sec_match.group(1).strip().title()}, {sec_match.group(2).strip().title()}",
+                "degree": "Secondary School (10th)",
+                "year": sec_match.group(3).strip(),
+                "grade": sec_match.group(4).strip()
             })
     
     return education

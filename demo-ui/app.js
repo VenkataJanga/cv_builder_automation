@@ -459,6 +459,7 @@ class CVBuilderApp {
             if (profile.current_title) html += `<h2>${profile.current_title}</h2>`;
             if (profile.current_organization) html += `<p><strong>Organization:</strong> ${profile.current_organization}</p>`;
             if (profile.total_experience) html += `<p><strong>Experience:</strong> ${profile.total_experience} years</p>`;
+            if (profile.target_role) html += `<p><strong>Target Role:</strong> ${profile.target_role}</p>`;
             if (profile.employee_id) html += `<p><strong>Employee ID:</strong> ${profile.employee_id}</p>`;
             if (profile.email) html += `<p><strong>Email:</strong> ${profile.email}</p>`;
             if (profile.location) html += `<p><strong>Location:</strong> ${profile.location}</p>`;
@@ -591,6 +592,20 @@ class CVBuilderApp {
         if (cvData.domain_expertise && cvData.domain_expertise.length > 0) {
             html += `<h3>Domain Expertise</h3><ul>`;
             cvData.domain_expertise.forEach(domain => html += `<li>${domain}</li>`);
+            html += `</ul>`;
+        }
+
+        // Certifications
+        if (cvData.certifications && cvData.certifications.length > 0) {
+            html += `<h3>Certifications</h3><ul>`;
+            cvData.certifications.forEach(cert => html += `<li>${cert}</li>`);
+            html += `</ul>`;
+        }
+
+        // Languages
+        if (cvData.languages && cvData.languages.length > 0) {
+            html += `<h3>Languages</h3><ul>`;
+            cvData.languages.forEach(lang => html += `<li>${lang}</li>`);
             html += `</ul>`;
         }
 

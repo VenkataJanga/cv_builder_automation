@@ -22,7 +22,7 @@ class CVFormattingAgent:
                 "location": personal.get("location") or personal.get("current_location", ""),
                 "current_organization": personal.get("current_organization") or employment.get("current_company", ""),
                 "total_experience": personal.get("total_experience") or f"{exp_years} years" if exp_years else "",
-                "target_role": cv_data.get("target_role", ""),
+                "target_role": cv_data.get("target_role") or (summary.get("target_role") if isinstance(summary, dict) else ""),
                 "email": personal.get("email", ""),
                 "employee_id": personal.get("employee_id") or personal.get("portal_id", ""),
                 "contact_number": personal.get("contact_number", ""),
@@ -36,7 +36,7 @@ class CVFormattingAgent:
             "cloud_platforms": self._format_skills(skills.get("cloud_platforms", []) if isinstance(skills, dict) else cv_data.get("cloud_platforms", [])),
             "operating_systems": self._format_skills(skills.get("operating_systems", []) if isinstance(skills, dict) else cv_data.get("operating_systems", [])),
             "databases": self._format_skills(skills.get("databases", []) if isinstance(skills, dict) else cv_data.get("databases", [])),
-            "domain_expertise": cv_data.get("domain_expertise", []),
+            "domain_expertise": cv_data.get("domain_expertise", []) or (skills.get("domain_expertise", []) if isinstance(skills, dict) else []),
             "employment": employment,
             "leadership": self._format_leadership(leadership),
             "work_experience": cv_data.get("work_experience", []),
@@ -61,11 +61,17 @@ class CVFormattingAgent:
                 )
             return ""
 
-        if isinstance(summary, (str, dict, list)):
+        if isinstance(summary, dict):
+            summary_copy = {k: v for k, v in summary.items() if k != "target_role"}
+            return normalize_value(summary_copy)
+
+        if isinstance(summary, (str, list)):
             return normalize_value(summary)
 
         fallback = cv_data.get("summary")
-        if isinstance(fallback, (str, dict, list)):
+        if isinstance(fallback, dict):
+            fallback = {k: v for k, v in fallback.items() if k != "target_role"}
+        if isinstance(fallback, (str, list, dict)):
             return normalize_value(fallback)
         return ""
 

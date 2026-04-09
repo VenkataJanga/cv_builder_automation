@@ -49,7 +49,17 @@ async def upload_cv(
             "cv_data": merged,
         }
 
-    return {"parsed_data": parsed_data}
+    new_session = conversation_service.start_session()
+    session = conversation_service.get_session(new_session["session_id"])
+    merged = merge_service.merge(session["cv_data"], parsed_data)
+    session["cv_data"] = merged
+
+    return {
+        "session_id": session["session_id"],
+        "parsed_data": parsed_data,
+        "cv_data": merged,
+        "question": new_session.get("question"),
+    }
 
 
 @router.post("/import")

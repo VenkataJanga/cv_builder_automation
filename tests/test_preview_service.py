@@ -38,6 +38,27 @@ def test_cv_formatting_agent_handles_professional_summary_object():
     assert formatted["education"] == cv_data["education"]
 
 
+def test_cv_formatting_agent_uses_summary_target_role_for_header():
+    cv_data = {
+        "personal_details": {
+            "full_name": "Arun Sharma",
+            "current_title": "Senior Developer",
+            "location": "Noida",
+            "email": "arun.sharma@example.com",
+        },
+        "summary": {
+            "professional_summary": "Experienced full-stack engineer working with cloud-native applications.",
+            "target_role": "Cloud Architect",
+        },
+    }
+
+    formatter = CVFormattingAgent()
+    formatted = formatter.format_cv(cv_data)
+
+    assert formatted["header"]["target_role"] == "Cloud Architect"
+    assert "Cloud Architect" not in formatted["summary"]
+
+
 def test_cv_formatting_agent_handles_education_list_of_strings():
     cv_data = {
         "personal_details": {

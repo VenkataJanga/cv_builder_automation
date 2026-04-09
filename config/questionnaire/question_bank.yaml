@@ -44,12 +44,19 @@ common:
     required: true
     order: 5
 
+  - id: q_common_005a
+    section: summary
+    field: target_role
+    question: What kinds of roles are you targeting?
+    required: false
+    order: 6
+
   - id: q_common_006
     section: personal_details
     field: total_experience
     question: What is your total years of experience?
     required: true
-    order: 6
+    order: 7
 
   - id: q_common_007
     section: personal_details
@@ -63,14 +70,28 @@ common:
     field: primary_skills
     question: What are your key primary skills?
     required: true
-    order: 8
+    order: 11
+
+  - id: q_common_008a
+    section: skills
+    field: domain_expertise
+    question: Which industries or domains have you worked in?
+    required: false
+    order: 12
+
+  - id: q_common_008b
+    section: skills
+    field: domain_expertise
+    question: What are your core areas of expertise?
+    required: false
+    order: 13
 
   - id: q_common_009
     section: skills
     field: secondary_skills
     question: What are your secondary skills or supporting technologies?
     required: false
-    order: 9
+    order: 14
 
   - id: q_common_010
     section: skills
@@ -160,16 +181,72 @@ project_manager:
   - id: q_pm_001
     section: leadership
     field: methodologies
-    question: What project management methodologies have you used?
+    question: What project management methodologies have you used (Agile, Waterfall, Hybrid)?
     required: true
     order: 301
 
   - id: q_pm_002
     section: leadership
+    field: projects_managed
+    question: How many projects have you managed simultaneously?
+    required: true
+    order: 302
+
+  - id: q_pm_003
+    section: leadership
+    field: avg_project_size
+    question: What was the average project size in terms of budget or team?
+    required: false
+    order: 303
+
+  - id: q_pm_004
+    section: leadership
+    field: risk_management
+    question: How do you handle project risks and issues?
+    required: true
+    order: 304
+
+  - id: q_pm_005
+    section: leadership
     field: stakeholder_management
     question: How do you manage stakeholders and expectations?
     required: true
-    order: 302
+    order: 305
+
+  - id: q_pm_006
+    section: leadership
+    field: client_communication
+    question: Have you handled client communication directly?
+    required: false
+    order: 306
+
+  - id: q_pm_007
+    section: leadership
+    field: progress_tracking
+    question: How do you track project progress and KPIs?
+    required: false
+    order: 307
+
+  - id: q_pm_008
+    section: leadership
+    field: tools_used
+    question: What tools have you used (JIRA, MS Project, etc.)?
+    required: false
+    order: 308
+
+  - id: q_pm_009
+    section: leadership
+    field: success_story
+    question: What is your biggest project success story?
+    required: false
+    order: 309
+
+  - id: q_pm_010
+    section: leadership
+    field: tight_deadline_delivery
+    question: Have you delivered projects under tight deadlines or constraints?
+    required: false
+    order: 310
 
 senior_team_lead:
   - id: q_stl_001
@@ -179,6 +256,69 @@ senior_team_lead:
     required: true
     order: 401
 
+  - id: q_stl_002
+    section: leadership
+    field: execution_role
+    question: What was your role in project execution?
+    required: true
+    order: 402
+
+  - id: q_stl_003
+    section: leadership
+    field: team_performance
+    question: How did you manage your team’s performance?
+    required: true
+    order: 403
+
+  - id: q_stl_004
+    section: leadership
+    field: technologies_tools
+    question: What technologies or tools did your team use?
+    required: true
+    order: 404
+
+  - id: q_stl_005
+    section: leadership
+    field: delivery_challenges
+    question: How did you handle delivery challenges?
+    required: true
+    order: 405
+
+  - id: q_stl_006
+    section: leadership
+    field: mentoring
+    question: Did you mentor or coach team members?
+    required: false
+    order: 406
+
+  - id: q_stl_007
+    section: leadership
+    field: quality_assurance
+    question: How did you ensure code quality or delivery quality?
+    required: false
+    order: 407
+
+  - id: q_stl_008
+    section: leadership
+    field: agile_ceremonies
+    question: Have you handled sprint planning or agile ceremonies?
+    required: false
+    order: 408
+
+  - id: q_stl_009
+    section: leadership
+    field: improvements
+    question: What improvements did you bring to your team?
+    required: false
+    order: 409
+
+  - id: q_stl_010
+    section: leadership
+    field: measurable_impact
+    question: What measurable impact did your team deliver?
+    required: false
+    order: 410
+
 delivery_head:
   - id: q_dh_001
     section: leadership
@@ -187,6 +327,69 @@ delivery_head:
     required: true
     order: 501
 
+  - id: q_dh_002
+    section: leadership
+    field: accounts_programs
+    question: Have you handled multiple accounts or programs?
+    required: false
+    order: 502
+
+  - id: q_dh_003
+    section: leadership
+    field: pnl_management
+    question: What is your experience in P&L management?
+    required: false
+    order: 503
+
+  - id: q_dh_004
+    section: leadership
+    field: delivery_excellence
+    question: How do you ensure delivery excellence across projects?
+    required: false
+    order: 504
+
+  - id: q_dh_005
+    section: leadership
+    field: digital_transformation
+    question: Have you driven digital transformation or large programs?
+    required: false
+    order: 505
+
+  - id: q_dh_006
+    section: leadership
+    field: client_relationships
+    question: How do you manage client relationships at leadership level?
+    required: false
+    order: 506
+
+  - id: q_dh_007
+    section: leadership
+    field: escalations_crisis
+    question: How do you handle escalations and crisis situations?
+    required: false
+    order: 507
+
+  - id: q_dh_008
+    section: leadership
+    field: governance_models
+    question: What governance models have you implemented?
+    required: false
+    order: 508
+
+  - id: q_dh_009
+    section: leadership
+    field: business_impact
+    question: What business growth or revenue impact have you driven?
+    required: false
+    order: 509
+
+  - id: q_dh_010
+    section: leadership
+    field: alignment_strategy
+    question: How do you align delivery with business strategy?
+    required: false
+    order: 510
+
 senior_hr:
   - id: q_hr_001
     section: leadership
@@ -194,3 +397,66 @@ senior_hr:
     question: What HR functions do you specialize in?
     required: true
     order: 601
+
+  - id: q_hr_002
+    section: leadership
+    field: recruitment_experience
+    question: Have you handled end-to-end recruitment cycles?
+    required: false
+    order: 602
+
+  - id: q_hr_003
+    section: leadership
+    field: employee_engagement
+    question: What is your experience with employee engagement initiatives?
+    required: false
+    order: 603
+
+  - id: q_hr_004
+    section: leadership
+    field: performance_management
+    question: Have you worked on performance management systems?
+    required: false
+    order: 604
+
+  - id: q_hr_005
+    section: leadership
+    field: conflict_resolution
+    question: Have you handled conflict resolution or employee relations?
+    required: false
+    order: 605
+
+  - id: q_hr_006
+    section: leadership
+    field: hr_tools
+    question: What HR tools or systems have you used?
+    required: false
+    order: 606
+
+  - id: q_hr_007
+    section: leadership
+    field: policies_compliance
+    question: Have you worked on HR policies or compliance?
+    required: false
+    order: 607
+
+  - id: q_hr_008
+    section: leadership
+    field: hiring_volume
+    question: What hiring volume have you handled?
+    required: false
+    order: 608
+
+  - id: q_hr_009
+    section: leadership
+    field: leadership_support
+    question: Have you supported leadership or business units directly?
+    required: false
+    order: 609
+
+  - id: q_hr_010
+    section: leadership
+    field: hr_transformations
+    question: What HR transformations or initiatives have you led?
+    required: false
+    order: 610

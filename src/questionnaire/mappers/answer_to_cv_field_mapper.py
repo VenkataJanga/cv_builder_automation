@@ -24,6 +24,9 @@ class AnswerToCVFieldMapper:
             "how would you describe your professional profile in 2–3 lines?": ("summary", "professional_summary"),
             "what is your total years of experience?": ("personal_details", "total_experience"),
             "what is your current organization?": ("personal_details", "current_organization"),
+            "what kinds of roles are you targeting?": ("summary", "target_role"),
+            "which industries or domains have you worked in?": ("skills", "domain_expertise"),
+            "what are your core areas of expertise?": ("skills", "domain_expertise"),
             "what are your key primary skills?": ("skills", "primary_skills"),
             "what are your secondary skills or supporting technologies?": ("skills", "secondary_skills"),
             "which tools, platforms, databases, cloud services, or operating systems have you worked with?": ("skills", "tools_and_platforms"),
@@ -33,6 +36,49 @@ class AnswerToCVFieldMapper:
             "have you led teams? if yes, what was the team size?": ("leadership", "team_leadership"),
             "what are your key leadership achievements?": ("leadership", "leadership_achievements"),
             "what business outcomes have you delivered?": ("leadership", "business_outcomes"),
+            "what was your role in project execution?": ("leadership", "execution_role"),
+            "how did you manage your team’s performance?": ("leadership", "team_performance"),
+            "what technologies or tools did your team use?": ("leadership", "technologies_tools"),
+            "how did you handle delivery challenges?": ("leadership", "delivery_challenges"),
+            "did you mentor or coach team members?": ("leadership", "mentoring"),
+            "how did you ensure code quality or delivery quality?": ("leadership", "quality_assurance"),
+            "have you handled sprint planning or agile ceremonies?": ("leadership", "agile_ceremonies"),
+            "what improvements did you bring to your team?": ("leadership", "improvements"),
+            "what measurable impact did your team deliver?": ("leadership", "measurable_impact"),
+            "how many projects have you managed simultaneously?": ("leadership", "projects_managed"),
+            "what was the average project size in terms of budget or team?": ("leadership", "avg_project_size"),
+            "how do you handle project risks and issues?": ("leadership", "risk_management"),
+            "have you handled client communication directly?": ("leadership", "client_communication"),
+            "how do you track project progress and kpis?": ("leadership", "progress_tracking"),
+            "what tools have you used (jira, ms project, etc.)?": ("leadership", "tools_used"),
+            "what is your biggest project success story?": ("leadership", "success_story"),
+            "have you delivered projects under tight deadlines or constraints?": ("leadership", "tight_deadline_delivery"),
+            "what are your primary technical domains?": ("skills", "primary_technical_domains"),
+            "what kind of systems have you built (scalable, distributed, cloud)?": ("leadership", "system_types"),
+            "which technologies and platforms do you specialize in?": ("leadership", "technology_specializations"),
+            "how do you make technical decisions?": ("leadership", "decision_making"),
+            "have you reviewed code or set technical standards?": ("leadership", "code_review_standards"),
+            "how do you ensure system performance and scalability?": ("leadership", "performance_scalability"),
+            "how do you handle technical risks?": ("leadership", "technical_risks"),
+            "have you mentored engineers or technical leads?": ("leadership", "mentoring_engineers"),
+            "have you handled end-to-end recruitment cycles?": ("leadership", "recruitment_experience"),
+            "what is your experience with employee engagement initiatives?": ("leadership", "employee_engagement"),
+            "have you worked on performance management systems?": ("leadership", "performance_management"),
+            "have you handled conflict resolution or employee relations?": ("leadership", "conflict_resolution"),
+            "what hr tools or systems have you used?": ("leadership", "hr_tools"),
+            "have you worked on hr policies or compliance?": ("leadership", "policies_compliance"),
+            "what hiring volume have you handled?": ("leadership", "hiring_volume"),
+            "have you supported leadership or business units directly?": ("leadership", "leadership_support"),
+            "what hr transformations or initiatives have you led?": ("leadership", "hr_transformations"),
+            "have you handled multiple accounts or programs?": ("leadership", "accounts_programs"),
+            "what is your experience in p&l management?": ("leadership", "pnl_management"),
+            "how do you ensure delivery excellence across projects?": ("leadership", "delivery_excellence"),
+            "have you driven digital transformation or large programs?": ("leadership", "digital_transformation"),
+            "how do you manage client relationships at leadership level?": ("leadership", "client_relationships"),
+            "how do you handle escalations and crisis situations?": ("leadership", "escalations_crisis"),
+            "what governance models have you implemented?": ("leadership", "governance_models"),
+            "what business growth or revenue impact have you driven?": ("leadership", "business_impact"),
+            "how do you align delivery with business strategy?": ("leadership", "alignment_strategy"),
         }
 
     def apply_answer(self, cv_data: Dict[str, Any], question: str, answer: str) -> Dict[str, Any]:
@@ -46,8 +92,17 @@ class AnswerToCVFieldMapper:
         section, field = target
         cv_data.setdefault(section, {})
 
-        if section == "skills" and field in {"primary_skills", "secondary_skills", "tools_and_platforms"}:
-            cv_data[section][field] = self._parse_list(answer)
+        if section == "skills" and field in {"primary_skills", "secondary_skills", "tools_and_platforms", "domain_expertise"}:
+            parsed = self._parse_list(answer)
+            existing = cv_data[section].get(field, [])
+            if isinstance(existing, list):
+                merged = list(existing)
+                for item in parsed:
+                    if item and item not in merged:
+                        merged.append(item)
+                cv_data[section][field] = merged
+            else:
+                cv_data[section][field] = parsed
             return cv_data
 
         if section == "personal_details" and field == "total_experience":
@@ -107,7 +162,7 @@ class AnswerToCVFieldMapper:
         # Normalize delimiters and split on clear education boundaries
         text = re.sub(r"\r?\n+", " ", text)
         parts = [part.strip() for part in re.split(
-            r'(?=(?:My second educational qualification|Then I have completed my 12th standard|I have completed my 10th standard))',
+            r'(?=(?:Next,|Then|I have completed intermediate|My secondary school))',
             text,
             flags=re.IGNORECASE,
         ) if part.strip()]

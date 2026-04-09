@@ -19,6 +19,14 @@ role_specific_requirements:
       - team_size
       - leadership_achievements
       - business_outcomes
+      - primary_technical_domains
+      - system_types
+      - technology_specializations
+      - decision_making
+      - performance_scalability
+      - cloud_platforms
+      - technical_risks
+      - mentoring_engineers
 
   solution_architect:
     required_fields:
@@ -30,19 +38,51 @@ role_specific_requirements:
   project_manager:
     required_fields:
       - methodologies
+      - projects_managed
+      - avg_project_size
+      - risk_management
       - stakeholder_management
+      - client_communication
+      - progress_tracking
+      - tools_used
+      - success_story
+      - tight_deadline_delivery
 
   senior_team_lead:
     required_fields:
       - project_types
+      - execution_role
       - team_performance
+      - technologies_tools
+      - delivery_challenges
+      - mentoring
+      - quality_assurance
+      - agile_ceremonies
+      - improvements
+      - measurable_impact
 
   delivery_head:
     required_fields:
       - delivery_size
+      - accounts_programs
       - pnl_management
+      - delivery_excellence
+      - digital_transformation
+      - client_relationships
+      - escalations_crisis
+      - governance_models
+      - business_impact
+      - alignment_strategy
 
   senior_hr:
     required_fields:
       - hr_specialization
       - recruitment_experience
+      - employee_engagement
+      - performance_management
+      - conflict_resolution
+      - hr_tools
+      - policies_compliance
+      - hiring_volume
+      - leadership_support
+      - hr_transformations

@@ -36,6 +36,14 @@ async def transcribe_audio(
             session["cv_data"] = merged
             result["session_id"] = session_id
             result["cv_data"] = merged
+    else:
+        new_session = conversation_service.start_session()
+        session = conversation_service.get_session(new_session["session_id"])
+        merged = merge_service.merge(session["cv_data"], result.get("extracted_cv_data", {}))
+        session["cv_data"] = merged
+        result["session_id"] = session["session_id"]
+        result["cv_data"] = merged
+        result["question"] = new_session.get("question")
 
     return result
 
@@ -55,5 +63,13 @@ def correct_transcript(
             session["cv_data"] = merged
             result["session_id"] = session_id
             result["cv_data"] = merged
+    else:
+        new_session = conversation_service.start_session()
+        session = conversation_service.get_session(new_session["session_id"])
+        merged = merge_service.merge(session["cv_data"], result.get("extracted_cv_data", {}))
+        session["cv_data"] = merged
+        result["session_id"] = session["session_id"]
+        result["cv_data"] = merged
+        result["question"] = new_session.get("question")
 
     return result
