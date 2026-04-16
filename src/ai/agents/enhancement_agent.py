@@ -1,6 +1,10 @@
 import httpx
 from openai import OpenAI
 from src.core.config.settings import settings
+from src.core.logging.logger import get_print_logger
+
+
+print = get_print_logger(__name__)
 
 
 class EnhancementAgent:

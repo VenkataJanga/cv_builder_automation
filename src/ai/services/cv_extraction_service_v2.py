@@ -10,7 +10,11 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 
+from src.core.logging.logger import get_print_logger
+
 load_dotenv()
+
+print = get_print_logger(__name__)
 
 # Import constants
 from src.core.constants import (

@@ -5,6 +5,11 @@ Detects missing or incomplete fields in CV data and suggests improvements.
 """
 from typing import Dict, List, Any
 
+from src.core.logging.logger import get_print_logger
+
+
+print = get_print_logger(__name__)
+
 
 class GapDetectionService:
     """Service for detecting gaps and missing fields in CV data."""

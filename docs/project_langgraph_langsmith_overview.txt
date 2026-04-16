@@ -1,0 +1,481 @@
+PROJECT ORCHESTRATION & LLM USAGE OVERVIEW
+==========================================
+
+1. LANGGRAPH ORCHESTRATION & FLOWS
+----------------------------------
+
+This project uses a LangGraph-style workflow abstraction to orchestrate CV processing. The core definitions are in:
+
+- src/orchestration/langgraph_workflows.py
+- src/orchestration/langgraph_cv_workflow.py
+- src/orchestration/enhanced_cv_orchestrator.py
+- src/orchestration/workflows/ (specialized flows per use case)
+
+1.1 Core Workflow Model
+-----------------------
+
+The central abstraction is CVProcessingWorkflow in langgraph_workflows.py. It defines:
+
+- A shared state (WorkflowState and its specializations ExtractionState, ValidationState, EnhancementState)
+- A set of nodes (WorkflowNode subclasses)
+- A simple graph (nodes + edges) and a sequential execution order
+
+State is a TypedDict including:
+
+- cv_id: unique identifier of the CV/session
+- raw_input: raw input payload (file info, transcript, or text)
+- text_content: normalized text used by downstream nodes
+- extracted_data: structured data extracted from CV
+- validation_results, enhancement_results
+- followup_session: data driving intelligent follow-up Q&A
+- retrieval_context: supporting context from RAG / templates
+- confidence_scores: per-field and overall confidence
+- errors, status, created_at, updated_at
+
+1.2 Workflow Nodes
+------------------
+
+Each step is implemented as a WorkflowNode subclass:
+
+- ExtractTextNode ("extract_text")
+  - Input: raw_input (file path, transcript, or plain text)
+  - Output: text_content in state
+
+- HybridExtractionNode ("hybrid_extraction")
+  - Input: text_content
+  - Output: extracted_data, extraction_confidence
+
+- DeepValidationNode ("deep_validation")
+  - Input: extracted_data
+  - Output: validation_results, aggregates issues_found, auto_fixes_applied
+
+- EnhancementNode ("enhancement")
+  - Input: extracted_data
+  - Output: enhancement_results, enhancement_suggestions, scaffold_used
+
+- FollowUpGenerationNode ("followup_generation")
+  - Input: extracted_data, validation_results, confidence_scores
+  - Output: followup_session
+
+- RetrievalNode ("retrieval")
+  - Input: extracted_data
+  - Output: retrieval_context
+
+The default CVProcessingWorkflow.execute() runs nodes in this sequence:
+
+1) extract_text
+2) hybrid_extraction
+3) deep_validation
+4) retrieval
+5) enhancement
+6) followup_generation
+
+Execution stops early if any node sets status = "failed"; otherwise final status becomes "completed".
+
+There are also helper predicates for conditional routing (usable in a more dynamic LangGraph setup):
+
+- should_generate_followups(state)
+- should_enhance(state)
+- should_retrieve_context(state)
+
+1.3 Mapping to the Four User Flows
+----------------------------------
+
+The same LangGraph-style orchestration is reused across four top-level modules / user journeys:
+
+1) Upload Audio
+2) Start Audio Recording
+3) Bot Conversation
+4) Upload Existing Documents (DOCX / PDF)
+
+The difference between flows is mainly in how raw_input and text_content are produced before they reach CVProcessingWorkflow.
+
+1.3.1 Upload Audio
+------------------
+
+High-level path:
+
+- Frontend uploads an audio file (e.g. webm, wav) to API.
+- Backend speech service converts audio -> transcript
+  - Speech-to-Text implemented via Whisper / Azure Speech (see src/web, tests/test_speech_service.py).
+- Orchestration input (conceptual example):
+
+  initial_state = {
+      "cv_id": <generated_id>,
+      "raw_input": {
+          "transcript": <normalized_transcript_text>,
+          "source": "upload_audio"
+      },
+      ...
+  }
+
+Then CVProcessingWorkflow.execute() runs on this state.
+
+1.3.2 Start Audio Recording
+---------------------------
+
+Very similar to Upload Audio, except:
+
+- Audio stream is captured live in the UI.
+- Recorded chunks are sent to backend; after stop, one audio blob is finalized.
+- Same STT and normalization pipeline.
+- Same CV workflow is invoked with raw_input["transcript"], typically with source = "start_recording" (or equivalent flag).
+
+1.3.3 Bot Conversation
+----------------------
+
+Bot conversation typically uses:
+
+- Existing CV state (structured, validated, possibly enhanced).
+- Retrieval to inject context / templates / previous Q&A (src/retrieval, src/questionnaire).
+- LangGraph workflow variants under:
+  - src/orchestration/langgraph_cv_workflow.py
+  - src/orchestration/workflows/
+
+Conversation "turns" update followup_session and raw_input (user messages) and may partially re-run:
+
+- retrieval
+- follow-up generation
+- enhancement (for suggested CV phrasing)
+
+1.3.4 Upload Existing Documents (DOCX/PDF)
+------------------------------------------
+
+Here the input enters as a file:
+
+  initial_state = {
+      "cv_id": <generated_id>,
+      "raw_input": {
+          "file_path": <path-to-docx-or-pdf>,
+          "source": "upload_document"
+      },
+      ...
+  }
+
+ExtractTextNode detects file_path, runs _extract_from_file, and sets text_content. Downstream, the same hybrid extraction -> validation -> enhancement -> follow-up / retrieval apply.
+
+2. LANGSMITH USAGE & LLM TRACING
+----------------------------------
+
+LangSmith is integrated via the src/observability package:
+
+- src/observability/langsmith_tracer.py
+- src/observability/langsmith_tracing.py
+
+These typically contain:
+
+- Environment-based configuration (project name, API key).
+- Helper functions or context managers to wrap:
+  - LLM calls
+  - Chains / agents
+  - LangGraph workflows
+
+How to know LangSmith is used:
+------------------------------
+
+- Check pyproject.toml or poetry.lock for langsmith dependency.
+- Check src/observability/langsmith_* for:
+  - LangSmithTracer
+  - any trace_llm_call, trace_workflow, or get_tracer helpers.
+- In orchestrators and AI services (src/ai/services, src/orchestration/*), look for:
+  - imports like from observability.langsmith_tracer import ...
+  - usage such as with tracer.run("step-name"): or decorators around LLM calls.
+
+Where to see traces:
+--------------------
+
+- Sign in to LangSmith with the project API key configured in environment variables (for example: LANGCHAIN_PROJECT, LANGCHAIN_API_KEY, or LANGSMITH_API_KEY).
+- In the LangSmith UI:
+  - Navigate to Projects -> your configured project (name used in langsmith_tracing.py).
+  - You will see:
+    - individual LLM calls (prompt + response)
+    - chain / agent runs
+    - end-to-end workflow traces for the four flows (audio upload, recording, conversation, document upload).
+
+3. LOGGING & TRACKING
+-----------------------
+
+Logging is handled at multiple layers:
+
+3.1 Core logging & telemetry
+-----------------------------
+
+- src/core/logging/ and src/core/telemetry/ (central configuration).
+- Standard Python logging with structured fields:
+  - cv_id, session_id, user_id (if available).
+  - flow (upload_audio, start_recording, conversation, upload_document).
+  - node / step name in the LangGraph workflow.
+  - status (started, completed, failed).
+- Potential integration with external telemetry such as:
+  - Azure Application Insights.
+  - OpenTelemetry exporters.
+
+3.2 Observability / traces
+--------------------------
+
+- src/observability/langsmith_tracer.py
+- src/observability/langsmith_tracing.py
+- These wrap LLM and chain calls with LangSmith trace spans.
+
+3.3 API & Worker level
+------------------------
+
+- apps/api/main.py, apps/api/dependencies.py, apps/api/middleware/
+- apps/worker/main.py, apps/worker/jobs/
+
+Typical logging:
+- incoming HTTP requests
+- job submission & completion
+- per-request correlation IDs
+
+3.4 Storage & deterministic artifacts
+---------------------------------------
+
+- Parsed / validated / canonical JSON is written via repositories under src/infrastructure/persistence/.
+- Output documents (DOCX/PDF) generated by src/infrastructure/rendering/.
+- File artifacts persist the final state so that logs and traces can be correlated with actual outputs.
+
+4. AUDIO FLOWS & LLM POSITION IN THE PIPELINE
+-----------------------------------------------
+
+For both Upload Audio and Start Recording, the common pipeline is:
+
+1) Voice/Audio Input
+   - User provides microphone audio (recording) or uploads a file.
+
+2) Speech-to-Text (Whisper / Azure Speech)
+   - Backend converts voice -> raw transcript text.
+   - This stage itself may or may not use an LLM, but typically uses speech models (ASR).
+
+3) Transcript Normalization (Python)
+   - Pure Python processing (no LLM) to:
+     - clean up filler words
+     - fix basic punctuation
+     - handle casing
+     - trim/merge lines.
+
+4) LLM Text Enhancement (ONLY LLM USAGE in this chain)
+   - This stage sends the normalized transcript to an LLM for:
+     - grammar & style polishing
+     - sentence structuring
+     - converting spoken bullet points into structured text.
+   - Prompts live in config/prompts/enhancement.yaml and are executed via:
+     - src/ai/enhancement/ + src/ai/services/.
+   - LLM call is traced via LangSmith (through observability/langsmith_*).
+
+5) Python Parser / Field Extraction
+   - Uses a combination of rule-based and/or LLM-backed parsers.
+   - The logical orchestration is via:
+     - HybridExtractionNode ("hybrid_extraction" in langgraph_workflows.py)
+     - src/ai/extraction/ and src/infrastructure/parsers/.
+   - This may be:
+     - partly deterministic (regex / keyword / ML)
+     - optionally uses structured LLM calls (see src/ai/structured_output/, config/prompts/extraction.yaml).
+
+6) Canonical CV JSON
+   - Builds a normalized, schema-compliant JSON representation of the CV.
+   - Domain logic under src/domain/cv/ and mappers in src/infrastructure/parsers/.
+
+7) Validation (Rule-based)
+   - Runs rule-based checks:
+     - required fields, formats
+     - length / consistency rules.
+   - Implemented via:
+     - DeepValidationNode ("deep_validation")
+     - src/ai/validation/, config/prompts/validation.yaml (for any LLM-backed validation).
+   - Primary layer is deterministic; LLM may be used for semantic validation / suggestion.
+
+8) Storage (Deterministic)
+   - Writes canonical JSON and related artifacts to persistent storage:
+     - src/infrastructure/persistence/.
+   - Ensures idempotent, traceable writes tied to cv_id and session_id.
+
+9) Preview / Export (DOCX/PDF)
+   - Uses template registry and rendering:
+     - src/templates/registry.py
+     - src/infrastructure/rendering/
+     - Template configs in config/templates/ (e.g. ntt_data_hybrid_2026.docx).
+   - Generates human-readable outputs (DOCX/PDF).
+
+Key point: In this audio pipeline, the explicitly LLM-only step is the LLM Text Enhancement stage. Extraction and validation may also leverage LLMs but are framed as hybrid / rule-based workflows.
+
+5. LLM CONTRIBUTION ACROSS THE FOUR MODULES
+-------------------------------------------
+
+The LLM is used differently in each module but follows a common design: LLM where semantics are needed, deterministic logic where rules suffice.
+
+5.1 Bot Conversation
+--------------------
+
+LLM role: Very high.
+
+- Natural language dialogue with the user:
+  - Clarifying missing fields.
+  - Suggesting stronger phrasing.
+  - Answering CV-related questions.
+- Uses RAG to ground answers:
+  - src/retrieval/*
+  - prompts in config/prompts/rag_answering.yaml.
+- Integrates with questionnaire engine:
+  - src/questionnaire/engine.py
+  - src/questionnaire/enhanced_followup_engine.py
+  - follow-up rules in config/questionnaire/*
+- LLM tasks:
+  - Choose / adapt follow-up questions.
+  - Summarize user answers into structured updates for the canonical CV.
+  - Generate friendly, context-aware responses.
+
+5.2 Upload Existing DOCX/PDF
+----------------------------
+
+LLM role: Medium to high.
+
+- From file to structured CV via:
+  - ExtractTextNode -> HybridExtractionNode -> DeepValidationNode -> EnhancementNode.
+- LLM is used for:
+  - Extraction (optional but common)
+    - Interpreting unstructured text and mapping it to CV schema fields.
+    - See prompts in config/prompts/extraction.yaml.
+  - Validation & feedback (optional)
+    - Semantically checking for inconsistencies or missing narrative.
+    - See config/prompts/validation.yaml.
+  - Enhancement
+    - Rewriting summaries, experience bullets, and skills descriptions.
+    - See config/prompts/enhancement.yaml.
+- Deterministic logic (parsers + rules) wrap around LLM outputs to ensure stable, predictable canonical JSON.
+
+5.3 Start Audio Recording
+-------------------------
+
+LLM role: Medium.
+
+- Same as Upload Audio (section 4) with live recording as input.
+- LLM contributions:
+  - Text Enhancement of spoken transcript into well-formed text.
+  - Optional:
+    - Structured extraction (similar to document flow).
+    - Enhancement of generated CV content from spoken narrative.
+
+5.4 Upload Audio Recording
+--------------------------
+
+LLM role: Medium.
+
+- Same pipeline as Start Recording but with pre-recorded file.
+- LLM contributions:
+  - Converting raw spoken description to polished text.
+  - Assisting in extracting structured fields (via hybrid extraction workflow).
+  - Optional enhancement and validation as in DOCX/PDF flow.
+
+SUMMARY
+-------
+
+- The project uses a LangGraph-inspired orchestration model (CVProcessingWorkflow and related workflows) to run consistent steps across multiple input channels: audio upload, start recording, bot conversation, and existing document upload.
+- LangSmith is integrated via src/observability/langsmith_* to trace LLM calls and workflows; traces are visible in the LangSmith UI under the configured project.
+- Logging and tracking are handled via:
+  - core logging/telemetry modules
+  - API/worker logs
+  - deterministic storage of canonical JSON and rendered outputs.
+- In the audio flows, the core LLM-only step is Text Enhancement, surrounded by deterministic normalization, parsing, validation, and rendering.
+- Across the four modules:
+  - Bot Conversation: LLM-centric (dialogue, RAG answering, follow-ups).
+  - Upload Existing DOCX/PDF: LLM for extraction, validation, enhancement with deterministic safeguards.
+  - Start Audio Recording / Upload Audio Recording: LLM primarily for enhancing transcripts and optionally for extraction & CV text generation.
+
+
+
+
+class PersonalDetails(BaseModel):
+    full_name: str
+    current_title: str
+    total_experience: Optional[float] = None
+    current_organization: Optional[str] = None
+    location: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    linkedin: Optional[str] = None
+
+
+class Summary(BaseModel):
+    professional_summary: str
+    target_role: Optional[str] = None
+
+
+class Skills(BaseModel):
+    primary_skills: List[str] = Field(default_factory=list)
+    secondary_skills: List[str] = Field(default_factory=list)
+    tools_and_platforms: List[str] = Field(default_factory=list)
+    domain_expertise: List[str] = Field(default_factory=list)
+
+
+class WorkExperience(BaseModel):
+    company_name: str
+    role_title: str
+    start_date: date
+    end_date: Optional[date] = None
+    responsibilities: List[str] = Field(default_factory=list)
+    achievements: List[str] = Field(default_factory=list)
+    location: Optional[str] = None
+
+
+class ProjectExperience(BaseModel):
+    project_name: str
+    client_name: Optional[str] = None
+    role: str
+    duration: Optional[str] = None
+    team_size: Optional[int] = None
+    technologies: List[str] = Field(default_factory=list)
+    responsibilities: List[str] = Field(default_factory=list)
+    outcomes: List[str] = Field(default_factory=list)
+
+
+class Certification(BaseModel):
+    certification_name: str
+    issuing_organization: Optional[str] = None
+    issue_date: Optional[date] = None
+    expiry_date: Optional[date] = None
+
+
+class Education(BaseModel):
+    degree: str
+    institution: str
+    specialization: Optional[str] = None
+    year_of_completion: Optional[int] = None
+
+
+class Publication(BaseModel):
+    title: str
+    publisher: Optional[str] = None
+    publication_date: Optional[date] = None
+    link: Optional[str] = None
+
+
+class Award(BaseModel):
+    award_name: str
+    organization: Optional[str] = None
+    date: Optional[date] = None
+    description: Optional[str] = None
+
+
+class Language(BaseModel):
+    language_name: str
+    proficiency: Optional[str] = None
+
+
+class CVSchema(BaseModel):
+    personal_details: PersonalDetails
+    summary: Summary
+    skills: Skills
+    work_experience: List[WorkExperience]
+    project_experience: List[ProjectExperience]
+    certifications: List[Certification]
+    education: List[Education]
+
+    # Optional Sections
+    publications: Optional[List[Publication]] = None
+    awards: Optional[List[Award]] = None
+    languages: Optional[List[Language]] = None
+
+    # Metadata
+    target_role: Optional[str] = None
+    schema_version: str = "1.0"

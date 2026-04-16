@@ -10,6 +10,11 @@ from pydantic import BaseModel, Field
 import json
 import uuid
 
+from src.core.logging.logger import get_print_logger
+
+
+print = get_print_logger(__name__)
+
 
 class TraceLevel(str, Enum):
     """Trace level"""

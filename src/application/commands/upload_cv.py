@@ -1,10 +1,14 @@
 import os
 from typing import Dict, Any, Optional
+from src.core.logging.logger import get_print_logger
 from src.infrastructure.parsers.docx_extractor import extract_docx
 from src.infrastructure.parsers.doc_extractor import extract_doc
 from src.infrastructure.parsers.pdf_extractor import extract_pdf
 from src.infrastructure.parsers.resume_parser import ResumeParser
 from src.ai.services.cv_workflow_orchestrator import CVWorkflowOrchestrator
+
+
+print = get_print_logger(__name__)
 
 
 class UploadCVCommand:

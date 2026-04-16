@@ -3,6 +3,8 @@ from typing import Dict, Any
 import tempfile
 import os
 
+from src.core.logging.logger import get_logger
+
 try:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
@@ -27,6 +29,19 @@ try:
     WEASYPRINT_AVAILABLE = True
 except ImportError:
     WEASYPRINT_AVAILABLE = False
+
+
+logger = get_logger(__name__)
+
+
+def print(*args, **kwargs):
+    message = " ".join(str(arg) for arg in args)
+    if message.startswith("Error"):
+        logger.error(message)
+    elif message.startswith("Warning"):
+        logger.warning(message)
+    else:
+        logger.info(message)
 
 
 class PdfRenderer:

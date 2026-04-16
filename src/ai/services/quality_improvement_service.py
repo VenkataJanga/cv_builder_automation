@@ -5,6 +5,11 @@ Improves the quality of CV data using AI-powered enhancements.
 """
 from typing import Dict, List, Any
 
+from src.core.logging.logger import get_print_logger
+
+
+print = get_print_logger(__name__)
+
 
 class QualityImprovementService:
     """Service for improving the quality of CV data."""

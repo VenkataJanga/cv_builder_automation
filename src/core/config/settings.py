@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     ENABLE_RBAC: bool = Field(default=False)
 
     LOG_LEVEL: str = Field(default="INFO")
+    LOG_TO_FILE: bool = Field(default=True)
+    LOG_FILE_PATH: str = Field(default="./log/app.log")
     SECRET_KEY: str = Field(default="super-secret-key")
     TOKEN_EXPIRE_MINUTES: int = Field(default=60)
 

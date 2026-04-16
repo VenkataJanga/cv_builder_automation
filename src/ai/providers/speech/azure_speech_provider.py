@@ -24,14 +24,31 @@ class AzureSpeechProvider(BaseSpeechProvider):
             audio_config=audio_config,
         )
 
-        result = recognizer.recognize_once()
-
-        if result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            return result.text or ""
-        if result.reason == speechsdk.ResultReason.NoMatch:
-            return ""
-        if result.reason == speechsdk.ResultReason.Canceled:
-            cancellation = result.cancellation_details
-            raise RuntimeError(f"Azure Speech canceled: {cancellation.reason}")
-
-        return ""
+        # Use continuous recognition for long-form audio (10+ minutes)
+        all_results = []
+        done = False
+        
+        def handle_recognized(evt):
+            if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
+                all_results.append(evt.result.text)
+        
+        def handle_session_stopped(evt):
+            nonlocal done
+            done = True
+        
+        recognizer.recognized.connect(handle_recognized)
+        recognizer.session_stopped.connect(handle_session_stopped)
+        recognizer.canceled.connect(handle_session_stopped)
+        
+        recognizer.start_continuous_recognition()
+        
+        # Wait for completion (with timeout for safety)
+        import time
+        timeout = 600  # 10 minutes max
+        start_time = time.time()
+        while not done and (time.time() - start_time) < timeout:
+            time.sleep(0.1)
+        
+        recognizer.stop_continuous_recognition()
+        
+        return " ".join(all_results)

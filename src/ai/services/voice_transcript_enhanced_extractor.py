@@ -716,4 +716,4 @@ if __name__ == '__main__':
     result = extractor.extract_comprehensive(sample_transcript)
     
     import json
-    print(json.dumps(result, indent=2))
+    logger.info(json.dumps(result, indent=2))

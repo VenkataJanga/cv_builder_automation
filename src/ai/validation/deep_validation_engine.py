@@ -583,7 +583,7 @@ class DeepValidationEngine:
         """Generate human-readable validation summary"""
         
         lines = [
-            f"Validation Status: {'✓ PASS' if result.is_valid else '✗ FAIL'}",
+            f"Validation Status: {'PASS' if result.is_valid else 'FAIL'}",
             f"Overall Score: {result.overall_score:.2%}",
             f"Issues: {len(result.issues)} total",
             f"  - Errors: {result.error_count}",

@@ -1,82 +1,217 @@
-from src.domain.cv.rules.completeness_rules import check_completeness
-from src.domain.cv.rules.chronology_rules import check_chronology
-from src.domain.cv.rules.duplication_rules import check_duplicates
-from src.domain.cv.rules.quality_rules import check_quality
+"""
+Application-level Validation Service
+
+Provides validation capabilities for CV data using the domain SchemaValidationService.
+This service acts as a bridge between the REST API and domain validation logic.
+
+Phase 4: Updated to work with canonical CV schema only.
+"""
+
+from typing import Dict, Any
+from src.domain.cv.services.schema_validation_service import SchemaValidationService, ValidationResult
+from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 
 
 class ValidationService:
-    def validate(self, cv_data: dict) -> dict:
-        errors = []
-        errors.extend(check_completeness(cv_data))
-        errors.extend(check_chronology(cv_data))
-        errors.extend(check_duplicates(cv_data))
-
-        quality = check_quality(cv_data)
-
-        summary_text = self._extract_summary_text(cv_data)
+    """
+    Application validation service that delegates to domain SchemaValidationService.
+    
+    Supports three validation contexts:
+    - save: Always allowed, provides completeness feedback
+    - save_and_validate: Detailed validation with warnings
+    - export: Strict validation, blocks if criteria not met
+    """
+    
+    def __init__(self):
+        self.schema_validator = SchemaValidationService()
+    
+    def validate(self, canonical_cv: Dict[str, Any], operation: str = "save") -> Dict[str, Any]:
+        """
+        Validate canonical CV data for specified operation.
         
-        # Handle skills as list or dict
-        skills = cv_data.get("skills", {})
-        skills_present = False
-        if isinstance(skills, list):
-            skills_present = bool(skills)
-        elif isinstance(skills, dict):
-            skills_present = bool(skills.get("primary_skills"))
+        Args:
+            canonical_cv: Canonical CV schema data (dict or CanonicalCVSchema)
+            operation: Validation context - "save", "save_and_validate", or "export"
+            
+        Returns:
+            Validation result dictionary compatible with session storage
+        """
+        # Convert dict to CanonicalCVSchema if needed
+        if isinstance(canonical_cv, dict):
+            try:
+                cv_schema = CanonicalCVSchema(**canonical_cv)
+            except Exception:
+                # If validation fails, work with dict directly
+                cv_schema = canonical_cv
+        else:
+            cv_schema = canonical_cv
         
-        section_scores = {
-            "summary_score": 100 if summary_text else 0,
-            "skills_score": 100 if skills_present else 0,
-            "leadership_score": 100 if cv_data.get("leadership") else 40,
-        }
-
-        confidence = self._compute_confidence(cv_data)
+        # Select appropriate validation method based on operation
+        if operation == "save":
+            result = self.schema_validator.validate_for_save(cv_schema)
+        elif operation == "save_and_validate":
+            result = self.schema_validator.validate_for_save_and_validate(cv_schema)
+        elif operation == "export":
+            result = self.schema_validator.validate_for_export(cv_schema)
+        else:
+            # Default to save validation
+            result = self.schema_validator.validate_for_save(cv_schema)
         
-        # Compute overall validation score (0-100)
-        all_issues = errors + quality.get("warnings", [])
-        score = max(0, 100 - (len(errors) * 15) - (len(quality.get("warnings", [])) * 5))
-
+        return self._convert_to_session_format(result)
+    
+    def validate_for_save(self, canonical_cv: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate CV for save operation (always allowed).
+        
+        Args:
+            canonical_cv: Canonical CV schema data
+            
+        Returns:
+            Validation result dictionary
+        """
+        return self.validate(canonical_cv, operation="save")
+    
+    def validate_for_save_and_validate(self, canonical_cv: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate CV with detailed feedback (save allowed, export conditional).
+        
+        Args:
+            canonical_cv: Canonical CV schema data
+            
+        Returns:
+            Validation result dictionary with detailed warnings
+        """
+        return self.validate(canonical_cv, operation="save_and_validate")
+    
+    def validate_for_export(self, canonical_cv: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate CV for export operation (strict, may block).
+        
+        Args:
+            canonical_cv: Canonical CV schema data
+            
+        Returns:
+            Validation result dictionary with export readiness
+        """
+        return self.validate(canonical_cv, operation="export")
+    
+    def get_completeness_percentage(self, canonical_cv: Dict[str, Any]) -> float:
+        """
+        Calculate CV completeness percentage.
+        
+        Args:
+            canonical_cv: Canonical CV schema data
+            
+        Returns:
+            Completeness percentage (0.0 to 100.0)
+        """
+        return self.schema_validator.get_completeness_percentage(canonical_cv)
+    
+    def _convert_to_session_format(self, validation_result: ValidationResult) -> Dict[str, Any]:
+        """
+        Convert ValidationResult to dictionary format for session storage.
+        
+        Maintains backward compatibility with existing session validation format
+        while adding new fields for Phase 4 canonical integration.
+        
+        Args:
+            validation_result: ValidationResult from SchemaValidationService or dict
+            
+        Returns:
+            Dictionary with validation results for session storage
+        """
+        # Handle both ValidationResult objects and dicts (for testing/mocking)
+        if isinstance(validation_result, dict):
+            result_dict = validation_result
+        else:
+            result_dict = validation_result.to_dict()
+        
+        # Build combined issues list for backward compatibility
+        all_issues = []
+        all_issues.extend(result_dict.get("validation_errors", []))
+        all_issues.extend(result_dict.get("validation_warnings", []))
+        
+        # Calculate score based on completeness and issues
+        completeness = result_dict.get("completeness_percentage", 0)
+        error_count = len(result_dict.get("validation_errors", []))
+        warning_count = len(result_dict.get("validation_warnings", []))
+        
+        # Score: Base completeness minus penalties for errors and warnings
+        score = max(0, completeness - (error_count * 15) - (warning_count * 5))
+        
+        # Build response with both old and new formats for compatibility
         return {
-            "is_valid": len(errors) == 0,
+            # Legacy format (backward compatibility)
+            "is_valid": result_dict.get("success", False),
             "score": score,
             "issues": all_issues,
-            "errors": errors,
-            "warnings": quality.get("warnings", []),
-            "suggestions": quality.get("suggestions", []),
-            "section_scores": section_scores,
-            "confidence": confidence,
+            "errors": result_dict.get("validation_errors", []),
+            "warnings": result_dict.get("validation_warnings", []),
+            "suggestions": [],  # Deprecated, kept for compatibility
+            
+            # Phase 4 canonical format
+            "success": result_dict.get("success", False),
+            "operation": result_dict.get("operation", "save"),
+            "can_save": result_dict.get("can_save", True),
+            "can_export": result_dict.get("can_export", False),
+            "is_export_ready": result_dict.get("is_export_ready", False),
+            "completeness_percentage": completeness,
+            "missing_mandatory_fields": result_dict.get("missing_mandatory_fields", []),
+            "missing_recommended_fields": result_dict.get("missing_recommended_fields", []),
+            "blocked_reason": result_dict.get("blocked_reason"),
+            "validation_timestamp": result_dict.get("validation_timestamp"),
+            
+            # Section scores for confidence (computed from completeness)
+            "section_scores": self._compute_section_scores(completeness),
+            "confidence": self._compute_confidence(completeness, error_count, warning_count),
         }
-
-    def _compute_confidence(self, cv_data: dict) -> dict:
-        personal = cv_data.get("personal_details", {})
-        skills = cv_data.get("skills", {})
-        summary = self._extract_summary_text(cv_data)
-        leadership = cv_data.get("leadership", {})
+    
+    def _compute_section_scores(self, completeness: float) -> Dict[str, float]:
+        """
+        Compute section scores for backward compatibility.
         
-        personal_score = 90 if personal else 30
-        skills_score = 90 if skills.get("primary_skills") else 20
-        summary_score = 85 if summary else 25
-        leadership_score = 80 if leadership else 40
-        
-        overall_score = (personal_score + skills_score + summary_score + leadership_score) / 4
+        Args:
+            completeness: Overall completeness percentage
+            
+        Returns:
+            Dictionary with section scores
+        """
+        # Simplified scoring based on overall completeness
+        base_score = completeness
         
         return {
-            "personal_details_confidence": personal_score / 100,
-            "skills_confidence": skills_score / 100,
-            "summary_confidence": summary_score / 100,
-            "leadership_confidence": leadership_score / 100,
-            "overall_score": overall_score,
+            "summary_score": base_score,
+            "skills_score": base_score,
+            "leadership_score": max(40, base_score),  # Minimum 40 for leadership
         }
-
-    def _extract_summary_text(self, cv_data: dict) -> str:
-        summary = cv_data.get("summary", "")
-        if isinstance(summary, dict):
-            return str(summary.get("professional_summary", "")).strip()
-        if isinstance(summary, list):
-            parts = []
-            for item in summary:
-                if isinstance(item, dict):
-                    parts.append(str(item.get("professional_summary", "")).strip())
-                else:
-                    parts.append(str(item).strip())
-            return " ".join([part for part in parts if part]).strip()
-        return str(summary).strip()
+    
+    def _compute_confidence(
+        self, completeness: float, error_count: int, warning_count: int
+    ) -> Dict[str, float]:
+        """
+        Compute confidence scores for backward compatibility.
+        
+        Args:
+            completeness: Overall completeness percentage
+            error_count: Number of validation errors
+            warning_count: Number of validation warnings
+            
+        Returns:
+            Dictionary with confidence scores
+        """
+        # Base confidence from completeness
+        base_confidence = completeness / 100.0
+        
+        # Reduce confidence for errors and warnings
+        error_penalty = error_count * 0.1
+        warning_penalty = warning_count * 0.05
+        
+        adjusted_confidence = max(0.0, base_confidence - error_penalty - warning_penalty)
+        
+        return {
+            "personal_details_confidence": adjusted_confidence,
+            "skills_confidence": adjusted_confidence,
+            "summary_confidence": adjusted_confidence,
+            "leadership_confidence": max(0.4, adjusted_confidence),  # Minimum 40%
+            "overall_score": adjusted_confidence * 100,
+        }

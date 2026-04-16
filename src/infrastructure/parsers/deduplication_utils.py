@@ -5,6 +5,11 @@ from typing import List, Dict, Any
 import hashlib
 import json
 
+from src.core.logging.logger import get_print_logger
+
+
+print = get_print_logger(__name__)
+
 
 def deduplicate_list_by_keys(items: List[Dict[str, Any]], unique_keys: List[str]) -> List[Dict[str, Any]]:
     """

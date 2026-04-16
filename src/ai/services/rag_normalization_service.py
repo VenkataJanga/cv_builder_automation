@@ -7,6 +7,11 @@ from typing import Dict, Any, List, Optional
 from openai import OpenAI
 import os
 
+from src.core.logging.logger import get_print_logger
+
+
+print = get_print_logger(__name__)
+
 
 class RAGNormalizationService:
     """

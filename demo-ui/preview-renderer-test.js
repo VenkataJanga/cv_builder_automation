@@ -55,6 +55,38 @@ function runPreviewRendererTests() {
         const nestedHtml = app.generateCVHTML(nestedSummaryData);
         assert(nestedHtml.includes('Experienced leader in cloud and data engineering.'), 'Nested professional summary array should render');
 
+        const objectListData = {
+            personal_details: {
+                full_name: 'Object List User',
+                current_title: 'Tech Lead',
+                current_organization: 'NTT DATA',
+                total_experience: 16,
+                employee_id: '229164',
+                email: 'object.user@nttdata.com',
+                location: 'Pune',
+            },
+            summary: {
+                professional_summary: 'Profile with object-based domain and certification entries.',
+            },
+            skills: {
+                domain_expertise: [
+                    { domain: 'Healthcare' },
+                    { industry: 'Banking' },
+                ],
+            },
+            certifications: [
+                { certification_name: 'ITIL4' },
+                { name: 'J2EE' },
+            ],
+        };
+
+        const objectListHtml = app.generateCVHTML(objectListData);
+        assert(objectListHtml.includes('Healthcare'), 'Domain object entries should render as text');
+        assert(objectListHtml.includes('Banking'), 'Industry object entries should render as text');
+        assert(objectListHtml.includes('ITIL4'), 'Certification object entries should render as text');
+        assert(objectListHtml.includes('J2EE'), 'Certification name fallback should render as text');
+        assert(!objectListHtml.includes('[object Object]'), 'Rendered HTML should never include object string placeholders');
+
         results.push({ message: 'All preview assertions passed.', status: 'pass' });
         document.getElementById('preview').innerHTML = html;
     } catch (error) {

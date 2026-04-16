@@ -27,7 +27,7 @@ def load_environment_variables(env_file: str = ".env") -> None:
     
     if env_path.exists():
         load_dotenv(dotenv_path=env_path, override=True)
-        logger.info(f"✅ Loaded environment variables from: {env_path}")
+        logger.info(f"Loaded environment variables from: {env_path}")
         
         # Verify critical variables
         critical_vars = ['OPENAI_API_KEY', 'OPENAI_MODEL']
@@ -38,11 +38,11 @@ def load_environment_variables(env_file: str = ".env") -> None:
                 missing_vars.append(var)
         
         if missing_vars:
-            logger.warning(f"⚠️ Missing environment variables: {', '.join(missing_vars)}")
+            logger.warning(f"Missing environment variables: {', '.join(missing_vars)}")
         else:
-            logger.info(f"✅ All critical environment variables loaded")
+            logger.info("All critical environment variables loaded")
     else:
-        logger.warning(f"⚠️ .env file not found at: {env_path}")
+        logger.warning(f".env file not found at: {env_path}")
         logger.info(f"Please create a .env file with required variables (OPENAI_API_KEY, etc.)")
 
 

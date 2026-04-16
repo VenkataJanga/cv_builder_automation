@@ -3,12 +3,27 @@ from pathlib import Path
 from typing import Dict, Any
 import re
 
+from src.core.logging.logger import get_logger
+
 try:
     from docx import Document
     from docx.shared import Inches
 except ImportError:
     # Fallback for environments where python-docx is not available
     Document = None
+
+
+logger = get_logger(__name__)
+
+
+def print(*args, **kwargs):
+    message = " ".join(str(arg) for arg in args)
+    if message.startswith("Error"):
+        logger.error(message)
+    elif message.startswith("Warning"):
+        logger.warning(message)
+    else:
+        logger.info(message)
 
 
 class DocxRenderer:
@@ -68,26 +83,47 @@ class DocxRenderer:
                 self.template_path = docx_path
         
         # Enhanced field mapping for better placeholder replacement
+        # CRITICAL: Field mapping keys MUST match the exact placeholder names in the template
+        # Template uses {{phone}}, {{portal_id}}, etc.
         self.field_mapping = {
+            # Header placeholders - match template exactly
             'full_name': ['full_name', 'name'],
             'job_title': ['current_title', 'job_title', 'title', 'designation'],
             'email': ['email', 'email_address'],
-            'phone': ['contact_number', 'phone', 'mobile', 'contact'],
-            'portal_id': ['employee_id', 'portal_id', 'emp_id'],
-            'professional_summary': ['summary', 'professional_summary'],
-            'experience_years': ['total_experience', 'experience', 'years_of_experience'],
-            'target_role': ['target_role', 'desired_position'],
+            'phone': ['contact_number', 'phone', 'mobile', 'contact'],  # Template uses {{phone}}
+            'portal_id': ['employee_id', 'portal_id', 'emp_id'],  # Template uses {{portal_id}}
             'location': ['location', 'city'],
+            'experience': ['total_experience', 'experience', 'years_of_experience'],
+            'professional_summary': ['summary', 'professional_summary'],  # Template uses {{professional_summary}}
             'current_organization': ['organization', 'current_organization', 'company'],
+            'target_role': ['target_role', 'desired_position'],
             'grade': ['grade', 'level'],
-            # New formatted section placeholders
-            'core_competencies': ['core_competencies', 'skills'],
-            'technical_skills_section': ['technical_skills_section', 'skills'],
-            'key_achievements_section': ['key_achievements_section', 'key_achievements'],
-            'experience_section': ['experience_section', 'work_experience'],
-            'projects_section': ['projects_section', 'project_experience'],
+            
+            # Skills table placeholders
+            'core_competencies': ['skills', 'primary_skills', 'core_competencies'],  # Template uses {{core_competencies}}
+            'technical_skills_section': ['technical_skills_section', 'skills', 'primary_skills'],
+            'secondary_skills': ['secondary_skills'],
+            'ai_frameworks': ['ai_frameworks'],
+            'cloud_platforms': ['cloud_platforms'],
+            'databases': ['databases'],
+            
+            # Education table placeholders
+            'degree': ['degree'],
+            'institution': ['institution'],
+            'year': ['year'],
+            'grade': ['grade'],
+            
+            # Certification table placeholders
+            'certification': ['certification'],
+            'issuer': ['issuer'],
+            'cert_year': ['cert_year'],
+            
+            # Section placeholders
+            'experience_section': ['work_experience_section', 'experience_section', 'work_experience'],
+            'projects_section': ['project_section', 'projects_section', 'project_experience'],
             'education_section': ['education_section', 'education'],
-            'certifications_section': ['certifications_section', 'certifications']
+            'certifications_section': ['certifications_section', 'certifications'],
+            'leadership_section': ['leadership_section'],
         }
 
     def render(self, context: Dict[str, Any]) -> bytes:
@@ -192,6 +228,7 @@ class DocxRenderer:
             if replacement_value is not None:
                 new_text = new_text.replace(placeholder_pattern, replacement_value)
                 replaced = True
+                print(f"DEBUG: Replaced {{{{ {placeholder} }}}} with '{replacement_value}'")
         
         # Handle the specific template field patterns
         # Pattern 1: NAME:, (with comma)
@@ -209,12 +246,7 @@ class DocxRenderer:
             new_text = full_text.replace("CURRENT GRADE:", f"CURRENT GRADE: {context['grade']}")
             replaced = True
         
-        # Pattern 4: Contact Details:
-        if context.get("contact_number") and "Contact Details:" in full_text:
-            new_text = full_text.replace("Contact Details:", f"Contact Details: {context['contact_number']}")
-            replaced = True
-        
-        # Pattern 5: Experience Summary - Add content after the header
+        # Pattern 4: Experience Summary - Add content after the header
         if full_text.strip() == "Experience Summary" and context.get("summary"):
             # Clear the paragraph and add the header with summary content
             paragraph.clear()
@@ -228,12 +260,13 @@ class DocxRenderer:
         
         # Also handle generic patterns for broader compatibility
         if context.get("employee_id"):
-            # Replace various employee ID patterns
+            # Replace various employee ID patterns - FIXED: Changed (\d*) to ([^\n,]*) to match actual content
             emp_id_patterns = [
-                r'(Portal\s*id[/\s]*emp\s*id\s*:?\s*)(\d*)',
-                r'(Employee\s*ID\s*:?\s*)(\d*)',
-                r'(EMP\s*ID\s*:?\s*)(\d*)',
-                r'(Portal\s*ID\s*:?\s*)(\d*)',
+                r'(Portal\s*id[/\s]*emp\s*id\s*:?\s*)([^\n,]*)',
+                r'(Employee\s*ID\s*:?\s*)([^\n,]*)',
+                r'(EMP\s*ID\s*:?\s*)([^\n,]*)',
+                r'(Portal\s*ID\s*:?\s*)([^\n,]*)',
+                r'(POTAL\s*ID\s*:?\s*)([^\n,]*)',  # Handle template typo
             ]
             
             for pattern in emp_id_patterns:
@@ -242,12 +275,12 @@ class DocxRenderer:
                     replaced = True
         
         if context.get("contact_number"):
-            # Replace contact number patterns
+            # Replace contact number patterns - FIXED: Changed (\d*) to ([^\n,]*) to match actual content
             contact_patterns = [
-                r'(Contact\s*Details?\s*:?\s*)(\d*)',
-                r'(Phone\s*:?\s*)(\d*)',
-                r'(Mobile\s*:?\s*)(\d*)',
-                r'(Contact\s*:?\s*)(\d*)',
+                r'(Contact\s*Details?\s*:?\s*)([^\n,]*)',
+                r'(Phone\s*:?\s*)([^\n,]*)',
+                r'(Mobile\s*:?\s*)([^\n,]*)',
+                r'(Contact\s*:?\s*)([^\n,]*)',
             ]
             
             for pattern in contact_patterns:
@@ -255,13 +288,13 @@ class DocxRenderer:
                     new_text = re.sub(pattern, f'\\g<1>{context["contact_number"]}', new_text, flags=re.IGNORECASE)
                     replaced = True
         
-        # Replace other common field patterns
+        # Replace other common field patterns - ENHANCED with better regex patterns
         field_patterns = {
             "full_name": [r'(Name\s*:?,?\s*)([A-Za-z\s]*,?)'],
             "email": [r'(Email\s*:?\s*)([a-zA-Z0-9._%+-]*@?[a-zA-Z0-9.-]*\.?[a-zA-Z]*)'],
             "current_title": [r'(Title\s*:?\s*)([A-Za-z\s]*)', r'(Designation\s*:?\s*)([A-Za-z\s]*)'],
-            "location": [r'(Location\s*:?\s*)([A-Za-z\s,]*)'],
-            "organization": [r'(Organization\s*:?\s*)([A-Za-z\s]*)', r'(Company\s*:?\s*)([A-Za-z\s]*)'],
+            "location": [r'(Location\s*:?\s*)([A-Za-z\s,.-]*)'],  # Enhanced to match commas, periods, hyphens
+            "organization": [r'(Current\s*Organization\s*:?\s*)([A-Za-z\s]*)', r'(Organization\s*:?\s*)([A-Za-z\s]*)', r'(Company\s*:?\s*)([A-Za-z\s]*)'],  # Added "Current Organization"
             "experience": [r'(Experience\s*:?\s*)([0-9+\s\w]*)'],
             "grade": [r'(Grade\s*:?\s*)([A-Za-z0-9\s]*)', r'(CURRENT\s*GRADE\s*:?\s*)([A-Za-z0-9\s]*)'],
         }
@@ -704,67 +737,87 @@ class DocxRenderer:
             return False
 
     def _populate_technical_expertise_table(self, table, context: Dict[str, Any]) -> bool:
-        """Populate the Technical Expertise table with consolidated skills data"""
+        """Populate the Technical Expertise table with separate rows for primary and secondary skills"""
         try:
-            # Consolidate ALL technical skills into a single comma-separated list
-            all_skills = []
+            # Prepare skill categories as separate rows
+            skill_rows = []
             
-            # Gather all skill categories
-            skill_sources = [
-                context.get("skills", ""),
-                context.get("secondary_skills", ""),
-                context.get("ai_frameworks", ""),
-                context.get("operating_systems", ""),
-                context.get("languages", ""),
-                context.get("tools_and_platforms", ""),
-                context.get("databases", ""),
-                context.get("domain_expertise", ""),
-                context.get("cloud_platforms", ""),
+            # Primary Skills (required)
+            primary_skills = context.get("skills", "")
+            if primary_skills:
+                if isinstance(primary_skills, list):
+                    primary_str = ", ".join(str(s).strip() for s in primary_skills if s)
+                elif isinstance(primary_skills, str):
+                    primary_str = primary_skills.strip()
+                else:
+                    primary_str = ""
+                    
+                if primary_str:
+                    skill_rows.append(("Primary Skills", primary_str))
+            
+            # Secondary Skills (separate row)
+            secondary_skills = context.get("secondary_skills", "")
+            if secondary_skills:
+                if isinstance(secondary_skills, list):
+                    secondary_str = ", ".join(str(s).strip() for s in secondary_skills if s)
+                elif isinstance(secondary_skills, str):
+                    secondary_str = secondary_skills.strip()
+                else:
+                    secondary_str = ""
+                    
+                if secondary_str:
+                    skill_rows.append(("Secondary Skills", secondary_str))
+            
+            # Other technical categories (consolidated into additional rows if needed)
+            other_categories = [
+                ("AI/ML Frameworks", context.get("ai_frameworks", "")),
+                ("Cloud Platforms", context.get("cloud_platforms", "")),
+                ("Tools & Platforms", context.get("tools_and_platforms", "")),
+                ("Databases", context.get("databases", "")),
+                ("Operating Systems", context.get("operating_systems", "")),
+                ("Domain Expertise", context.get("domain_expertise", "")),
             ]
             
-            # Consolidate all skills into one list
-            for skill_value in skill_sources:
-                if skill_value:
-                    # Handle both string and list formats
-                    if isinstance(skill_value, str):
-                        # Split by comma if it's a comma-separated string
-                        skills_list = [s.strip() for s in skill_value.split(',') if s.strip()]
-                        all_skills.extend(skills_list)
-                    elif isinstance(skill_value, list):
-                        all_skills.extend([str(s).strip() for s in skill_value if s])
-            
-            # Remove duplicates while preserving order
-            seen = set()
-            unique_skills = []
-            for skill in all_skills:
-                if skill and skill not in seen:
-                    seen.add(skill)
-                    unique_skills.append(skill)
-            
-            # Create consolidated skills string
-            consolidated_skills = ", ".join(unique_skills)
-            
-            # Populate the table with ONE row for "Technical Skills"
-            if len(table.rows) >= 2 and consolidated_skills:  # Header + at least 1 data row
-                row = table.rows[1]  # First data row after header
-                if len(row.cells) >= 2:
-                    # Set "Technical Skills" label in first column
-                    row.cells[0].paragraphs[0].clear()
-                    row.cells[0].paragraphs[0].add_run("Technical Skills")
+            for category_name, category_value in other_categories:
+                if category_value:
+                    if isinstance(category_value, list):
+                        category_str = ", ".join(str(s).strip() for s in category_value if s)
+                    elif isinstance(category_value, str):
+                        category_str = category_value.strip()
+                    else:
+                        category_str = ""
                     
-                    # Set consolidated skills in second column
-                    row.cells[1].paragraphs[0].clear()
-                    row.cells[1].paragraphs[0].add_run(consolidated_skills)
-                
-                # Remove extra rows if they exist (keep only header + 1 data row)
-                while len(table.rows) > 2:
-                    # Remove the last row
-                    tbl = table._element
-                    tbl.remove(table.rows[-1]._element)
-                
-                return True
+                    if category_str:
+                        skill_rows.append((category_name, category_str))
             
-            return False
+            if not skill_rows:
+                return False
+            
+            # Ensure table has enough rows
+            while len(table.rows) < len(skill_rows) + 1:  # +1 for header
+                table.add_row()
+            
+            # Populate each row
+            for idx, (label, skills) in enumerate(skill_rows):
+                row_idx = idx + 1  # Skip header row
+                if row_idx < len(table.rows):
+                    row = table.rows[row_idx]
+                    if len(row.cells) >= 2:
+                        # Set label in first column
+                        row.cells[0].paragraphs[0].clear()
+                        row.cells[0].paragraphs[0].add_run(label)
+                        
+                        # Set skills in second column
+                        row.cells[1].paragraphs[0].clear()
+                        row.cells[1].paragraphs[0].add_run(skills)
+            
+            # Remove extra unused rows
+            while len(table.rows) > len(skill_rows) + 1:
+                tbl = table._element
+                tbl.remove(table.rows[-1]._element)
+            
+            print(f"DEBUG: Populated technical expertise table with {len(skill_rows)} skill categories")
+            return True
             
         except Exception as e:
             print(f"Error populating technical expertise table: {e}")
@@ -1014,58 +1067,171 @@ class DocxRenderer:
             return False
 
     def _populate_qualification_table(self, table, context: Dict[str, Any]) -> bool:
-        """Populate the Qualification Details table"""
+        """Populate the Qualification Details table - handles both placeholder replacement and row addition"""
         try:
             education = context.get("education", "")
             if not education:
+                # No education data - try placeholder replacement instead
                 return False
-                
-            # Parse education
-            educations = self._parse_education(education)
             
+            # Handle both structured list and text format
+            educations = []
+            if isinstance(education, list):
+                # Already structured - use directly
+                educations = education
+            else:
+                # Parse from text format
+                educations = self._parse_education(education)
+            
+            if not educations:
+                return False
+            
+            # Determine table structure from headers
+            if len(table.rows) == 0:
+                return False
+            
+            header_row = table.rows[0]
+            num_cols = len(header_row.cells)
+            
+            print(f"DEBUG: Populating education table with {len(educations)} entries, {num_cols} columns")
+            
+            # Check if row 1 contains placeholders - if so, REPLACE them in the SAME row (don't return False)
+            if len(table.rows) >= 2:
+                first_data_row = table.rows[1]
+                first_row_text = " ".join([cell.text for cell in first_data_row.cells]).lower()
+                
+                # If row contains placeholders, REPLACE them directly in this method
+                if "{{" in first_row_text and "}}" in first_row_text:
+                    print("DEBUG: Found placeholders in education table row, replacing them directly")
+                    # Replace placeholders in the existing row instead of returning False
+                    # This ensures the table replacement happens
+                    if len(educations) > 0:
+                        edu = educations[0]  # Use first education entry
+                        if isinstance(edu, dict):
+                            # Extract all fields
+                            degree = edu.get("degree") or edu.get("qualification") or edu.get("program") or ""
+                            specialization = edu.get("specialization") or edu.get("field_of_study") or edu.get("major") or ""
+                            year = edu.get("year") or edu.get("year_of_completion") or edu.get("graduation_year") or ""
+                            college = edu.get("college") or edu.get("institution") or ""
+                            university = edu.get("university") or edu.get("institution") or ""
+                            grade = edu.get("grade") or edu.get("percentage") or edu.get("gpa") or edu.get("cgpa") or ""
+                            
+                            # Replace placeholders in each cell
+                            for cell in first_data_row.cells:
+                                for paragraph in cell.paragraphs:
+                                    cell_text = paragraph.text
+                                    if "{{" in cell_text and "}}" in cell_text:
+                                        # Replace all possible placeholders
+                                        cell_text = cell_text.replace("{{degree}}", degree)
+                                        cell_text = cell_text.replace("{{qualification}}", degree)
+                                        cell_text = cell_text.replace("{{specialization}}", specialization)
+                                        cell_text = cell_text.replace("{{year}}", str(year))
+                                        cell_text = cell_text.replace("{{college}}", college)
+                                        cell_text = cell_text.replace("{{institution}}", university or college)  # Use university if available
+                                        cell_text = cell_text.replace("{{university}}", university)
+                                        cell_text = cell_text.replace("{{grade}}", str(grade))
+                                        cell_text = cell_text.replace("{{percentage}}", str(grade))
+                                        cell_text = cell_text.replace("{{gpa}}", str(grade))
+                                        cell_text = cell_text.replace("{{cgpa}}", str(grade))
+                                        
+                                        # Update the cell
+                                        paragraph.clear()
+                                        paragraph.add_run(cell_text)
+                                        print(f"DEBUG: Replaced education placeholder in cell: {cell_text}")
+                    
+                    return True  # Return True to indicate we handled the table
+            
+            # Otherwise use row addition strategy
             row_idx = 1  # Skip header
             for idx, edu in enumerate(educations):
+                if not isinstance(edu, dict):
+                    continue
+                
                 if row_idx >= len(table.rows):
                     table.add_row()
                     
                 row = table.rows[row_idx]
                 cells = row.cells
                 
-                if len(cells) >= 7:
-                    # Sl. No.
+                # Enhanced field extraction with multiple fallback names
+                degree = edu.get("degree") or edu.get("qualification") or edu.get("program") or ""
+                specialization = edu.get("specialization") or edu.get("field_of_study") or edu.get("major") or ""
+                year = edu.get("year") or edu.get("year_of_completion") or edu.get("graduation_year") or ""
+                college = edu.get("college") or edu.get("institution") or ""
+                university = edu.get("university") or edu.get("institution") or ""
+                grade = edu.get("grade") or edu.get("percentage") or edu.get("gpa") or edu.get("cgpa") or ""
+                
+                # Clean up university field if it contains newlines or extra text
+                if university:
+                    # Remove extra whitespace and newlines
+                    university = " ".join(university.split())
+                    # If it's too long (combined with other text), try to extract meaningful part
+                    if len(university) > 100:
+                        # Try to find "University" keyword and extract around it
+                        if "University" in university:
+                            parts = university.split("University")
+                            if len(parts) >= 2:
+                                # Take the part before "University" and include "University"
+                                university = parts[0].strip() + " University"
+                        # Truncate if still too long
+                        if len(university) > 80:
+                            university = university[:77] + "..."
+                
+                # Populate based on table structure
+                if num_cols == 4:
+                    # Simplified hybrid template: Degree | University/Institution | Year | Grade/GPA
+                    cells[0].paragraphs[0].clear()
+                    degree_text = degree
+                    if specialization:
+                        degree_text = f"{degree} in {specialization}" if degree else specialization
+                    cells[0].paragraphs[0].add_run(degree_text)
+                    
+                    cells[1].paragraphs[0].clear()
+                    institution_text = university or college
+                    cells[1].paragraphs[0].add_run(institution_text)
+                    
+                    cells[2].paragraphs[0].clear()
+                    cells[2].paragraphs[0].add_run(str(year))
+                    
+                    cells[3].paragraphs[0].clear()
+                    cells[3].paragraphs[0].add_run(str(grade))
+                    
+                    print(f"DEBUG: Education {idx+1}: {degree_text} | {institution_text} | {year} | {grade}")
+                    
+                elif num_cols >= 7:
+                    # Full table: Sl. No. | Degree | Branch | Year | College | University | Percentage
                     cells[0].paragraphs[0].clear()
                     cells[0].paragraphs[0].add_run(str(idx + 1))
                     
-                    # Degree
                     cells[1].paragraphs[0].clear()
-                    cells[1].paragraphs[0].add_run(edu.get("qualification", ""))
+                    cells[1].paragraphs[0].add_run(degree)
                     
-                    # Branch
                     cells[2].paragraphs[0].clear()
-                    cells[2].paragraphs[0].add_run(edu.get("specialization", ""))
+                    cells[2].paragraphs[0].add_run(specialization)
                     
-                    # Year of Passing
                     cells[3].paragraphs[0].clear()
-                    cells[3].paragraphs[0].add_run(edu.get("year", ""))
+                    cells[3].paragraphs[0].add_run(str(year))
                     
-                    # College
                     cells[4].paragraphs[0].clear()
-                    cells[4].paragraphs[0].add_run(edu.get("college", ""))
+                    cells[4].paragraphs[0].add_run(college)
                     
-                    # University
                     cells[5].paragraphs[0].clear()
-                    cells[5].paragraphs[0].add_run(edu.get("university", ""))
+                    cells[5].paragraphs[0].add_run(university)
                     
-                    # Percentage/CGPA
                     cells[6].paragraphs[0].clear()
-                    cells[6].paragraphs[0].add_run(edu.get("percentage", ""))
+                    cells[6].paragraphs[0].add_run(str(grade))
                     
-                row_idx += 1
+                    print(f"DEBUG: Education {idx+1}: {degree} | {specialization} | {year} | {college} | {university} | {grade}")
                 
+                row_idx += 1
+            
+            print(f"DEBUG: Successfully populated education table with {row_idx - 1} entries")
             return True
             
         except Exception as e:
             print(f"Error populating qualification table: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def _parse_project_experience(self, project_exp_text: str) -> list:

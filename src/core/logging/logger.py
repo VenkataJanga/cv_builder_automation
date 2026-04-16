@@ -1,7 +1,7 @@
 import logging
-import sys
 import json
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict
 
 from src.core.config.settings import settings
@@ -39,33 +39,84 @@ class JsonFormatter(logging.Formatter):
 # ---------------------------------------------------------
 # Logger Factory
 # ---------------------------------------------------------
-def get_logger(name: str) -> logging.Logger:
-    """
-    Returns configured logger instance.
-    """
-    logger = logging.getLogger(name)
+def _ensure_log_path() -> Path:
+    log_path = Path(settings.LOG_FILE_PATH)
+    if not log_path.parent.exists():
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    return log_path.resolve()
 
-    if logger.handlers:
-        return logger  # prevent duplicate handlers
 
-    logger.setLevel(settings.LOG_LEVEL.upper())
-
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
+def _configure_root_logger() -> None:
+    root_logger = logging.getLogger()
+    root_logger.setLevel(settings.LOG_LEVEL.upper())
 
     if settings.ENV == "local":
-        # Simple readable logs for dev
         formatter = logging.Formatter(
             "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
         )
     else:
-        # JSON logs for prod
         formatter = JsonFormatter()
 
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    # Remove existing console/stream handlers so runtime noise does not go to stdout.
+    for handler in list(root_logger.handlers):
+        if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+            root_logger.removeHandler(handler)
 
-    return logger
+    if settings.LOG_TO_FILE:
+        log_path = _ensure_log_path()
+        file_handler_exists = any(
+            isinstance(handler, logging.FileHandler) and Path(handler.baseFilename).resolve() == log_path
+            for handler in root_logger.handlers
+        )
+        created_root_file_handler = False
+        if not file_handler_exists:
+            file_handler = logging.FileHandler(log_path, encoding="utf-8")
+            file_handler.setFormatter(formatter)
+            root_logger.addHandler(file_handler)
+            created_root_file_handler = True
+
+        # Route uvicorn logs to the same file and suppress their console handlers.
+        for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"):
+            app_logger = logging.getLogger(logger_name)
+            app_logger.setLevel(settings.LOG_LEVEL.upper())
+            for handler in list(app_logger.handlers):
+                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                    app_logger.removeHandler(handler)
+            if not any(
+                isinstance(handler, logging.FileHandler) and Path(handler.baseFilename).resolve() == log_path
+                for handler in app_logger.handlers
+            ):
+                uvicorn_file_handler = logging.FileHandler(log_path, encoding="utf-8")
+                uvicorn_file_handler.setFormatter(formatter)
+                app_logger.addHandler(uvicorn_file_handler)
+            app_logger.propagate = False
+
+        if created_root_file_handler:
+            root_logger.info(f"Logging to file: {log_path.resolve()}")
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Returns configured logger instance.
+    """
+    _configure_root_logger()
+    return logging.getLogger(name)
+
+
+def get_print_logger(name: str):
+    """Return a print-compatible callable that routes messages to the configured logger."""
+    logger = get_logger(name)
+
+    def _log_message(*args, **kwargs):
+        message = " ".join(str(arg) for arg in args)
+        if message.startswith("Error") or message.startswith("[ERROR]"):
+            logger.error(message)
+        elif message.startswith("Warning") or message.startswith("[WARNING]") or message.startswith("[WARN]"):
+            logger.warning(message)
+        else:
+            logger.info(message)
+
+    return _log_message
 
 
 # ---------------------------------------------------------

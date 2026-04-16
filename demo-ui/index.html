@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="AI-powered CV Builder - Create professional CVs through conversation, document upload, or voice interaction">
     <title>CV Builder Automation</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="container">
@@ -15,68 +16,68 @@
 
         <main class="main-grid">
             <!-- Session Management -->
-            <div class="section session-section">
+            <div class="section session-section" role="region" aria-label="Session Management">
                 <h2>Session Management</h2>
                 <div class="session-controls">
-                    <input type="text" id="sessionId" placeholder="Enter session ID or leave blank for new session">
-                    <button id="createSession" class="btn btn-primary">Create New Session</button>
-                    <button id="loadSession" class="btn btn-secondary">Load Session</button>
+                    <input type="text" id="sessionId" placeholder="Enter session ID or leave blank for new session" aria-label="Session ID input">
+                    <button id="createSession" class="btn btn-primary" aria-label="Create new CV building session">Create New Session</button>
+                    <button id="loadSession" class="btn btn-secondary" aria-label="Load existing session">Load Session</button>
                 </div>
-                <div id="currentSession" class="current-session"></div>
+                <div id="currentSession" class="current-session" aria-live="polite"></div>
             </div>
 
             <!-- File Upload Section -->
-            <div class="section upload-section">
+            <div class="section upload-section" role="region" aria-label="Document Upload">
                 <h2>📄 Document Upload</h2>
-                <div class="upload-area" id="documentUpload">
+                <div class="upload-area" id="documentUpload" role="button" tabindex="0" aria-label="Drag and drop area for CV documents">
                     <div class="upload-content">
-                        <div class="upload-icon">📁</div>
+                        <div class="upload-icon" aria-hidden="true">📁</div>
                         <p>Drag & drop PDF or DOCX files here</p>
                         <p>or <button class="btn-link" id="browseFiles">browse files</button></p>
-                        <input type="file" id="fileInput" accept=".pdf,.docx" hidden>
+                        <input type="file" id="fileInput" accept=".pdf,.docx" hidden aria-label="File input for CV documents">
                     </div>
                 </div>
-                <div id="uploadProgress" class="progress-bar" style="display: none;">
+                <div id="uploadProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Upload progress">
                     <div class="progress-fill"></div>
                 </div>
-                <div id="uploadResult" class="result-area"></div>
+                <div id="uploadResult" class="result-area" aria-live="polite"></div>
             </div>
 
             <!-- Audio Section -->
-            <div class="section audio-section">
+            <div class="section audio-section" role="region" aria-label="Voice Interaction">
                 <h2>🎤 Voice Interaction</h2>
                 <div class="audio-controls">
                     <div class="record-section">
-                        <button id="recordBtn" class="btn btn-record">
-                            <span class="record-icon">🔴</span>
+                        <button id="recordBtn" class="btn btn-record" aria-label="Start or stop voice recording">
+                            <span class="record-icon" aria-hidden="true">🔴</span>
                             Start Recording
                         </button>
-                        <div id="recordingStatus" class="recording-status"></div>
-                        <audio id="audioPlayback" controls style="display: none;"></audio>
+                        <div id="recordingStatus" class="recording-status" aria-live="polite"></div>
+                        <audio id="audioPlayback" controls style="display: none;" aria-label="Audio playback"></audio>
                     </div>
                     <div class="upload-audio-section">
                         <h3>Or upload audio file</h3>
-                        <div class="audio-upload-area" id="audioUpload">
+                        <div class="audio-upload-area" id="audioUpload" role="button" tabindex="0" aria-label="Drag and drop area for audio files">
                             <div class="upload-content">
-                                <div class="upload-icon">🎵</div>
+                                <div class="upload-icon" aria-hidden="true">🎵</div>
                                 <p>Drag & drop audio files here</p>
                                 <p>or <button class="btn-link" id="browseAudioFiles">browse audio files</button></p>
-                                <input type="file" id="audioFileInput" accept=".mp3,.wav,.webm,.m4a,.ogg" hidden>
+                                <input type="file" id="audioFileInput" accept=".mp3,.wav,.webm,.m4a,.ogg" hidden aria-label="Audio file input">
                             </div>
                         </div>
                     </div>
                 </div>
-                <div id="audioProgress" class="progress-bar" style="display: none;">
+                <div id="audioProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Audio processing progress">
                     <div class="progress-fill"></div>
                 </div>
-                <div id="transcriptionResult" class="result-area"></div>
+                <div id="transcriptionResult" class="result-area" aria-live="polite"></div>
             </div>
 
             <!-- Chat Interface -->
-            <div class="section chat-section">
+            <div class="section chat-section" role="region" aria-label="Chat Conversation">
                 <h2>💬 Conversation</h2>
                 <div id="chatContainer" class="chat-container">
-                    <div id="chatMessages" class="chat-messages">
+                    <div id="chatMessages" class="chat-messages" role="log" aria-live="polite" aria-label="Chat messages">
                         <div class="message bot-message">
                             <div class="message-content">
                                 Hello! I'm here to help you build your CV. You can:
@@ -91,21 +92,39 @@
                     </div>
                     <div class="chat-input-area">
                         <div class="input-group">
-                            <input type="text" id="chatInput" placeholder="Type your message here..." maxlength="1000">
-                            <button id="sendChatBtn" class="btn btn-send">Send</button>
+                            <input type="text" id="chatInput" placeholder="Type your message here..." maxlength="1000" aria-label="Chat message input">
+                            <button id="sendChatBtn" class="btn btn-send" aria-label="Send chat message">Send</button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- CV Preview -->
-            <div class="section preview-section">
+            <div class="section preview-section" role="region" aria-label="CV Preview">
                 <h2>👁️ CV Preview</h2>
                 <div class="preview-controls">
-                    <button id="refreshPreview" class="btn btn-secondary">Refresh Preview</button>
-                    <button id="exportCV" class="btn btn-success">Export CV</button>
+                    <button id="refreshPreview" class="btn btn-secondary" aria-label="Refresh CV preview">🔄 Refresh Preview</button>
+                    <button id="toggleEditMode" class="btn btn-secondary" aria-label="Toggle CV edit mode"><span aria-hidden="true">✏️</span> Edit CV</button>
+                    <button id="saveAndValidate" class="btn btn-primary" aria-label="Save and validate CV"><span aria-hidden="true">💾</span> Save & Validate</button>
+                    <button id="exportCV" class="btn btn-success btn-disabled" disabled title="💾 Click 'Save & Validate' first" aria-label="Export CV (requires validation first)">📥 Export CV</button>
+                    <div id="reviewStatusBadge" class="review-status-badge" style="display: none;">
+                        <span class="status-icon">⏳</span>
+                        <span class="status-text">Pending Review</span>
+                    </div>
                 </div>
-                <div id="cvPreview" class="cv-preview">
+                
+                <!-- Validation Feedback Panel -->
+                <div id="validationFeedback" class="validation-feedback validation-success" style="display: none;">
+                    <div class="validation-header">
+                        <span class="validation-icon">✓</span>
+                        <h3 style="margin: 0; color: #1f2937;">Validation Results</h3>
+                    </div>
+                    <div id="validationContent" class="validation-content">
+                        <!-- Validation feedback will be populated dynamically by JavaScript -->
+                    </div>
+                </div>
+
+                <div id="cvPreview" class="cv-preview" aria-live="polite" aria-label="CV content preview">
                     <div class="preview-placeholder">
                         <p>Your CV data will appear here as you build it</p>
                         <p>Upload a document, record audio, or start chatting to begin</p>
@@ -131,17 +150,17 @@
         </div>
 
         <!-- Export Modal -->
-        <div id="exportModal" class="modal" style="display: none;">
+        <div id="exportModal" class="modal" style="display: none;" role="dialog" aria-labelledby="exportModalTitle" aria-modal="true">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3>Export CV</h3>
-                    <button class="modal-close">&times;</button>
+                    <h3 id="exportModalTitle">Export CV</h3>
+                    <button class="modal-close" aria-label="Close export modal">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="export-options">
-                        <button class="btn btn-export" data-format="pdf">Export as PDF</button>
-                        <button class="btn btn-export" data-format="docx">Export as DOCX</button>
-                        <button class="btn btn-export" data-format="json">Export as JSON</button>
+                        <button class="btn btn-export" data-format="pdf" aria-label="Export CV as PDF">Export as PDF</button>
+                        <button class="btn btn-export" data-format="docx" aria-label="Export CV as DOCX">Export as DOCX</button>
+                        <button class="btn btn-export" data-format="json" aria-label="Export CV as JSON">Export as JSON</button>
                     </div>
                 </div>
             </div>
@@ -152,6 +171,6 @@
         </footer>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

@@ -3,6 +3,13 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List
 
+from src.ai.services.conversational_text_extractor import extract_from_conversational_text
+from src.core.logging.logger import get_print_logger
+from src.domain.cv.services.merge_cv import MergeCVService
+
+
+print = get_print_logger(__name__)
+
 
 class AnswerToCVFieldMapper:
     """
@@ -82,8 +89,25 @@ class AnswerToCVFieldMapper:
         }
 
     def apply_answer(self, cv_data: Dict[str, Any], question: str, answer: str) -> Dict[str, Any]:
+        print(f"DEBUG MAPPER: apply_answer called with question='{question}', answer='{answer[:100]}...'")
         normalized = question.strip().lower()
+        print(f"DEBUG MAPPER: normalized question='{normalized}'")
+
         target = self._mapping.get(normalized)
+
+        # For explicit questionnaire prompts, always prefer deterministic field mapping.
+        # Free-form conversational extraction is reserved for unmapped questions only.
+        if target:
+            print(f"DEBUG MAPPER: Using direct mapping for known questionnaire prompt")
+        else:
+            print(f"DEBUG MAPPER: About to check if conversational input for unmapped prompt")
+            if self._is_conversational_input(answer):
+                print(f"DEBUG MAPPER: Using conversational extractor for comprehensive input")
+                extracted_data = extract_from_conversational_text(answer)
+                merge_service = MergeCVService()
+                merged_data = merge_service.merge(cv_data, extracted_data)
+                return merged_data
+            print(f"DEBUG MAPPER: NOT detected as conversational input, storing as unmapped answer")
 
         if not target:
             cv_data.setdefault("unmapped_answers", {})[question] = answer
@@ -220,3 +244,46 @@ class AnswerToCVFieldMapper:
             })
 
         return education
+    
+    @staticmethod
+    def _is_conversational_input(text: str) -> bool:
+        """
+        Detect if the input is comprehensive conversational text rather than a simple answer
+        """
+        text_lower = text.lower()
+        
+        # Look for multiple personal details indicators in a single message
+        indicators = [
+            "my name is",
+            "phone number is",
+            "portal id is",
+            "employee id is", 
+            "located in",
+            "work at",
+            "current organization",
+            "years of experience",
+            "primary skills include",
+            "secondary skills",
+            "bachelor",
+            "master",
+            "university",
+            "degree",
+            "graduated",
+            "my email",
+            "contact number"
+        ]
+        
+        # Count how many different types of information are mentioned
+        indicator_count = sum(1 for indicator in indicators if indicator in text_lower)
+        
+        # Debug logging
+        print(f"DEBUG: Conversational detection for text: {text[:100]}...")
+        print(f"DEBUG: Found {indicator_count} indicators")
+        print(f"DEBUG: Text length: {len(text)}")
+        
+        # If multiple indicators (3+) are present, treat as conversational input
+        # Also check for length - comprehensive input is typically longer
+        is_conversational = indicator_count >= 3 or (indicator_count >= 2 and len(text) > 200)
+        print(f"DEBUG: Is conversational: {is_conversational}")
+        
+        return is_conversational

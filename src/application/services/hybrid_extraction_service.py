@@ -2,6 +2,7 @@ from src.ai.services.llm_enhancement_service import LLMEnhancementService
 from src.infrastructure.parsers.resume_parser import ResumeParser
 from src.infrastructure.parsers.transcript_cv_parser_fixed import TranscriptCVParser
 from src.ai.services.voice_transcript_production_extractor import extract_from_voice_transcript
+from src.ai.services.conversational_text_extractor import extract_from_conversational_text
 
 
 class HybridExtractionService:
@@ -24,21 +25,26 @@ class HybridExtractionService:
     
     def extract_from_voice(self, transcript: str, initial_data: dict | None = None) -> dict:
         """
-        Extract CV data from voice transcript using production-grade extractor
+        Extract CV data from voice transcript or conversational text
         
         Args:
-            transcript: Voice transcript text
+            transcript: Voice transcript or conversational text
             initial_data: Optional initial data to merge with
             
         Returns:
-            Extracted CV data with proper project extraction
+            Extracted CV data with proper field extraction
         """
-        # Use the production-grade voice transcript extractor
-        parsed = extract_from_voice_transcript(transcript)
+        # Determine if this is a voice transcript or conversational text
+        if self._is_voice_transcript(transcript):
+            # Use the production-grade voice transcript extractor
+            parsed = extract_from_voice_transcript(transcript)
+        else:
+            # Use conversational text extractor for natural conversation
+            parsed = extract_from_conversational_text(transcript)
         
         # Merge with initial data if provided
         if initial_data:
-            # Simple merge - prioritize voice extraction for new fields
+            # Simple merge - prioritize new extraction for new fields
             for key, value in parsed.items():
                 if value and (key not in initial_data or not initial_data[key]):
                     initial_data[key] = value
@@ -58,6 +64,53 @@ class HybridExtractionService:
         
         return parsed
     
+    def _is_voice_transcript(self, text: str) -> bool:
+        """
+        Determine if text is a voice transcript or conversational input
+        
+        Voice transcripts typically have specific patterns like:
+        - "my name is john smith. my portal id is..."
+        - "coming to my educational background..."
+        - "my first project is..."
+        
+        Conversational text is more natural:
+        - "My name is John Smith. My phone number is +1-555-123-4567..."
+        - "I'm located in New York, NY and work at..."
+        """
+        text_lower = text.lower()
+        
+        # Voice transcript indicators
+        voice_indicators = [
+            "coming to my educational",
+            "my first project is",
+            "my second project",
+            "coming to my roles and responsibilities",
+            "over the course of my career",
+            "over past",
+            "clients such as"
+        ]
+        
+        # Conversational text indicators  
+        conversational_indicators = [
+            "my phone number is",
+            "portal id is",
+            "i'm located in",
+            "i currently work at",
+            "my primary skills include",
+            "my secondary skills are",
+            "bachelor's degree",
+            "master's degree",
+            "years of experience"
+        ]
+        
+        voice_score = sum(1 for indicator in voice_indicators if indicator in text_lower)
+        conversational_score = sum(1 for indicator in conversational_indicators if indicator in text_lower)
+        
+        # If we have more conversational indicators, treat as conversational
+        # If we have voice indicators, treat as voice transcript
+        # Default to conversational for mixed/unclear cases
+        return voice_score > conversational_score and voice_score > 0
+
     def _needs_enhancement(self, parsed_data: dict) -> bool:
         """Check if the parsed data needs LLM enhancement"""
         # Check project completeness

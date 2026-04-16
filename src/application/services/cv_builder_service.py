@@ -5,18 +5,25 @@ from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
 
-from src.domain.cv.models.cv_schema import CVSchema, PersonalDetails, Summary, Skills
+from src.domain.cv.enums import SourceType
+from src.domain.cv.models.canonical_cv_schema import (
+    CanonicalCVSchema,
+    CertificationModel,
+    EducationModel,
+    ProjectModel,
+    get_empty_schema,
+)
 from src.questionnaire.mappers.answer_to_cv_field_mapper import AnswerToCVFieldMapper
 
 
 class CVBuilderService:
     """
-    Builds and updates canonical CV data from questionnaire answers.
+    Builds and updates questionnaire cv_data from answers.
 
-    MVP1 responsibilities:
-    - maintain partial structured CV data
-    - map question answers to schema fields
-    - create a validated CVSchema only when minimum required fields exist
+    Responsibilities:
+    - maintain partial structured questionnaire cv_data
+    - map question answers to questionnaire field names
+    - create a minimal validated CanonicalCVSchema only when minimum required fields exist
     """
 
     def __init__(self) -> None:
@@ -42,43 +49,95 @@ class CVBuilderService:
     def update_from_answer(self, cv_data: Dict[str, Any], question: str, answer: str) -> Dict[str, Any]:
         return self.mapper.apply_answer(cv_data, question, answer)
 
-    def try_build_schema(self, cv_data: Dict[str, Any]) -> Optional[CVSchema]:
-        """Attempts to create a CVSchema instance."""
-        if not self._has_minimum_required_fields(cv_data):
+    def build_partial_schema(self, cv_data: Dict[str, Any]) -> CanonicalCVSchema:
+        """Build a best-effort canonical schema from partial questionnaire data."""
+        schema = self._build_schema(cv_data, require_minimum=False)
+        if schema is None:
+            return get_empty_schema(source_type=SourceType.BOT_CONVERSATION.value)
+        return schema
+
+    def try_build_schema(self, cv_data: Dict[str, Any]) -> Optional[CanonicalCVSchema]:
+        """Attempts to create a minimal CanonicalCVSchema instance."""
+        return self._build_schema(cv_data, require_minimum=True)
+
+    def _build_schema(
+        self,
+        cv_data: Dict[str, Any],
+        require_minimum: bool,
+    ) -> Optional[CanonicalCVSchema]:
+        if require_minimum and not self._has_minimum_required_fields(cv_data):
             return None
 
         try:
-            return CVSchema(
-                personal_details=PersonalDetails(
-                    full_name=cv_data["personal_details"]["full_name"],
-                    current_title=cv_data["personal_details"]["current_title"],
-                    total_experience=cv_data["personal_details"].get("total_experience"),
-                    current_organization=cv_data["personal_details"].get("current_organization"),
-                    location=cv_data["personal_details"]["location"],
-                    email=cv_data["personal_details"].get("email"),
-                    phone=cv_data["personal_details"].get("phone"),
-                    linkedin=cv_data["personal_details"].get("linkedin"),
-                ),
-                summary=Summary(
-                    professional_summary=cv_data["summary"]["professional_summary"],
-                    target_role=cv_data.get("target_role"),
-                ),
-                skills=Skills(
-                    primary_skills=cv_data["skills"].get("primary_skills", []),
-                    secondary_skills=cv_data["skills"].get("secondary_skills", []),
-                    tools_and_platforms=cv_data["skills"].get("tools_and_platforms", []),
-                    domain_expertise=cv_data["skills"].get("domain_expertise", []),
-                ),
-                work_experience=cv_data.get("work_experience", []),
-                project_experience=cv_data.get("project_experience", []),
-                certifications=cv_data.get("certifications", []),
-                education=cv_data.get("education", []),
-                publications=cv_data.get("publications") or None,
-                awards=cv_data.get("awards") or None,
-                languages=cv_data.get("languages") or None,
-                target_role=cv_data.get("target_role"),
-                schema_version=cv_data.get("schema_version", "1.0"),
-            )
+            personal = cv_data.get("personal_details", {})
+            summary = cv_data.get("summary", {})
+            skills = cv_data.get("skills", {})
+
+            schema = get_empty_schema(source_type=SourceType.BOT_CONVERSATION.value)
+            schema.candidate.fullName = personal.get("full_name", "")
+            schema.candidate.currentDesignation = personal.get("current_title", "")
+            schema.candidate.currentOrganization = personal.get("current_organization", "") or ""
+            schema.candidate.email = personal.get("email", "") or ""
+            schema.candidate.phoneNumber = personal.get("phone", "") or ""
+            schema.candidate.portalId = personal.get("employee_id", "") or ""
+            schema.candidate.summary = summary.get("professional_summary", "")
+            schema.candidate.careerObjective = cv_data.get("target_role") or summary.get("target_role") or ""
+            schema.personalDetails.linkedinUrl = personal.get("linkedin", "") or ""
+            schema.personalDetails.languagesKnown = list(cv_data.get("languages", []) or [])
+
+            total_experience = personal.get("total_experience")
+            if total_experience not in (None, ""):
+                try:
+                    schema.candidate.totalExperienceYears = int(float(total_experience))
+                except (TypeError, ValueError):
+                    schema.candidate.totalExperienceYears = 0
+
+            location_value = personal.get("location", "")
+            schema.candidate.currentLocation.fullAddress = location_value
+            if isinstance(location_value, str):
+                location_parts = [part.strip() for part in location_value.split(",") if part.strip()]
+                if location_parts:
+                    schema.candidate.currentLocation.city = location_parts[0]
+                if len(location_parts) > 1:
+                    schema.candidate.currentLocation.country = location_parts[-1]
+
+            schema.skills.primarySkills = list(skills.get("primary_skills", []) or [])
+            schema.skills.secondarySkills = list(skills.get("secondary_skills", []) or [])
+            schema.skills.toolsAndPlatforms = list(skills.get("tools_and_platforms", []) or [])
+            schema.experience.domainExperience = list(skills.get("domain_expertise", []) or [])
+            schema.experience.industriesWorked = list(skills.get("domain_expertise", []) or [])
+
+            for education_entry in cv_data.get("education", []) or []:
+                if not isinstance(education_entry, dict):
+                    continue
+                schema.education.append(EducationModel(
+                    degree=education_entry.get("degree") or education_entry.get("qualification") or "",
+                    institution=education_entry.get("institution") or education_entry.get("college") or education_entry.get("university") or "",
+                    specialization=education_entry.get("specialization") or "",
+                    university=education_entry.get("university") or "",
+                    yearOfPassing=str(education_entry.get("year_of_completion") or education_entry.get("year") or ""),
+                    percentage=str(education_entry.get("percentage") or ""),
+                ))
+
+            for project_entry in cv_data.get("project_experience", []) or []:
+                if not isinstance(project_entry, dict):
+                    continue
+                schema.experience.projects.append(ProjectModel(
+                    projectName=project_entry.get("project_name") or "",
+                    clientName=project_entry.get("client_name") or "",
+                    role=project_entry.get("role") or "",
+                    projectDescription=project_entry.get("description") or project_entry.get("project_description") or "",
+                    toolsUsed=list(project_entry.get("technologies", []) or []),
+                    responsibilities=list(project_entry.get("responsibilities", []) or []),
+                    outcomes=list(project_entry.get("outcomes", []) or []),
+                ))
+
+            for certification in cv_data.get("certifications", []) or []:
+                if not certification:
+                    continue
+                schema.certifications.append(CertificationModel(name=str(certification)))
+
+            return CanonicalCVSchema(**schema.model_dump())
         except ValidationError:
             return None
 

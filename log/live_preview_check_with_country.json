@@ -1,0 +1,229 @@
+﻿{
+    "cv_data":  {
+                    "header":  {
+                                   "full_name":  "Venkata Janga",
+                                   "current_title":  "System Intelligence Advisor",
+                                   "location":  "Bangalore",
+                                   "current_organization":  "NTT DATA",
+                                   "total_experience":  8.0,
+                                   "target_role":  "",
+                                   "email":  "venkata@janga.com",
+                                   "employee_id":  "",
+                                   "contact_number":  "9881248765",
+                                   "grade":  ""
+                               },
+                    "summary":  "Backend engineer with 8 years of experience in cloud data platforms.",
+                    "skills":  [
+                                   "Python",
+                                   "FastAPI",
+                                   "SQL",
+                                   "Azure"
+                               ],
+                    "secondary_skills":  [
+
+                                         ],
+                    "tools_and_platforms":  [
+
+                                            ],
+                    "ai_frameworks":  [
+
+                                      ],
+                    "cloud_platforms":  [
+
+                                        ],
+                    "operating_systems":  [
+
+                                          ],
+                    "databases":  [
+
+                                  ],
+                    "domain_expertise":  [
+                                             "Healthcare",
+                                             "Insurance",
+                                             "Banking"
+                                         ],
+                    "employment":  {
+
+                                   },
+                    "leadership":  {
+
+                                   },
+                    "work_experience":  [
+
+                                        ],
+                    "project_experience":  [
+                                               {
+                                                   "project_name":  "Recommended Stock System",
+                                                   "client_name":  "Volkswagen",
+                                                   "role":  null,
+                                                   "duration":  "",
+                                                   "team_size":  null,
+                                                   "technologies":  [
+                                                                        "ETL"
+                                                                    ],
+                                                   "responsibilities":  [
+
+                                                                        ],
+                                                   "outcomes":  [
+
+                                                                ],
+                                                   "description":  "1. Recommended Stock System (Client: Volkswagen) - Designed stock recommendation workflows for automotive parts. - Developed ETL pipelines and reporting workflows"
+                                               }
+                                           ],
+                    "certifications":  [
+
+                                       ],
+                    "education":  [
+
+                                  ],
+                    "publications":  [
+
+                                     ],
+                    "awards":  [
+
+                               ],
+                    "languages":  [
+
+                                  ],
+                    "schema_version":  "1.1"
+                },
+    "preview":  {
+                    "header":  {
+                                   "full_name":  "Venkata Janga",
+                                   "current_title":  "System Intelligence Advisor",
+                                   "location":  "Bangalore",
+                                   "current_organization":  "NTT DATA",
+                                   "total_experience":  8.0,
+                                   "target_role":  "",
+                                   "email":  "venkata@janga.com",
+                                   "employee_id":  "",
+                                   "contact_number":  "9881248765",
+                                   "grade":  ""
+                               },
+                    "summary":  "Backend engineer with 8 years of experience in cloud data platforms.",
+                    "skills":  [
+                                   "Python",
+                                   "FastAPI",
+                                   "SQL",
+                                   "Azure"
+                               ],
+                    "secondary_skills":  [
+
+                                         ],
+                    "tools_and_platforms":  [
+
+                                            ],
+                    "ai_frameworks":  [
+
+                                      ],
+                    "cloud_platforms":  [
+
+                                        ],
+                    "operating_systems":  [
+
+                                          ],
+                    "databases":  [
+
+                                  ],
+                    "domain_expertise":  [
+                                             "Healthcare",
+                                             "Insurance",
+                                             "Banking"
+                                         ],
+                    "employment":  {
+
+                                   },
+                    "leadership":  {
+
+                                   },
+                    "work_experience":  [
+
+                                        ],
+                    "project_experience":  [
+                                               {
+                                                   "project_name":  "Recommended Stock System",
+                                                   "client_name":  "Volkswagen",
+                                                   "role":  null,
+                                                   "duration":  "",
+                                                   "team_size":  null,
+                                                   "technologies":  [
+                                                                        "ETL"
+                                                                    ],
+                                                   "responsibilities":  [
+
+                                                                        ],
+                                                   "outcomes":  [
+
+                                                                ],
+                                                   "description":  "1. Recommended Stock System (Client: Volkswagen) - Designed stock recommendation workflows for automotive parts. - Developed ETL pipelines and reporting workflows"
+                                               }
+                                           ],
+                    "certifications":  [
+
+                                       ],
+                    "education":  [
+
+                                  ],
+                    "publications":  [
+
+                                     ],
+                    "awards":  [
+
+                               ],
+                    "languages":  [
+
+                                  ],
+                    "schema_version":  "1.1"
+                },
+    "validation":  {
+                       "success":  true,
+                       "operation":  "save_and_validate",
+                       "can_save":  true,
+                       "can_export":  false,
+                       "is_export_ready":  false,
+                       "completeness_percentage":  48.3,
+                       "missing_mandatory_fields":  [
+                                                        "Current Country"
+                                                    ],
+                       "missing_recommended_fields":  [
+                                                          "Technical Skills"
+                                                      ],
+                       "validation_errors":  [
+
+                                             ],
+                       "validation_warnings":  [
+                                                   "No education information found",
+                                                   "Required for export: Current Country",
+                                                   "Recommended to add: Technical Skills"
+                                               ],
+                       "blocked_reason":  null,
+                       "validation_timestamp":  "2026-04-15T20:21:38.129132"
+                   },
+    "validation_result":  {
+                              "success":  true,
+                              "operation":  "save_and_validate",
+                              "can_save":  true,
+                              "can_export":  false,
+                              "is_export_ready":  false,
+                              "completeness_percentage":  48.3,
+                              "missing_mandatory_fields":  [
+                                                               "Current Country"
+                                                           ],
+                              "missing_recommended_fields":  [
+                                                                 "Technical Skills"
+                                                             ],
+                              "validation_errors":  [
+
+                                                    ],
+                              "validation_warnings":  [
+                                                          "No education information found",
+                                                          "Required for export: Current Country",
+                                                          "Recommended to add: Technical Skills"
+                                                      ],
+                              "blocked_reason":  null,
+                              "validation_timestamp":  "2026-04-15T20:21:38.129132"
+                          },
+    "review_status":  "pending",
+    "has_user_edits":  false,
+    "source":  "generated"
+}

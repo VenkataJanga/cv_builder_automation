@@ -8,8 +8,7 @@ if BASE_DIR.exists():
 else:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from apps.api.main import app
 import uvicorn
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("apps.api.main:app", host="0.0.0.0", port=8000, reload=True)

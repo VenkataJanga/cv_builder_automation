@@ -1,7 +1,12 @@
 ﻿import asyncio
 
+from src.core.logging.logger import get_logger
+
+
+logger = get_logger(__name__)
+
 async def main():
-    print('Worker started')
+    logger.info('Worker started')
     await asyncio.sleep(0.1)
 
 if __name__ == '__main__':
