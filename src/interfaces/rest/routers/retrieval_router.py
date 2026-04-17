@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 
 from src.application.services.retrieval_service import RetrievalService
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
-router = APIRouter(prefix="/retrieval", tags=["retrieval"])
+router = APIRouter(prefix="/retrieval", tags=["retrieval"], dependencies=[Depends(get_current_user)])
 
 retrieval_service = RetrievalService()
 

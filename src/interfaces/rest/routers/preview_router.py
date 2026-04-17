@@ -7,12 +7,13 @@ All repair functions and cv_data fallbacks have been removed.
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from src.application.services.conversation_service import ConversationService
 from src.application.services.preview_service import PreviewService
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
-router = APIRouter(prefix="/preview", tags=["preview"])
+router = APIRouter(prefix="/preview", tags=["preview"], dependencies=[Depends(get_current_user)])
 
 conversation_service = ConversationService()
 preview_service = PreviewService()

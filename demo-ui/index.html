@@ -5,18 +5,31 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="AI-powered CV Builder - Create professional CVs through conversation, document upload, or voice interaction">
     <title>CV Builder Automation</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=modern6">
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🤖 CV Builder Automation</h1>
-            <p>Build your professional CV through conversation, document upload, or voice interaction</p>
+        <header class="app-header">
+            <div class="header-brand">
+                <img src="nttdata_logo.png" alt="NTT DATA" class="header-logo" />
+                <div class="header-logo-divider"></div>
+                <div class="header-text">
+                    <h1 class="app-title">CV Builder Automation</h1>
+                    <p class="app-subtitle">Build your professional CV through conversation, document upload, or voice interaction</p>
+                </div>
+            </div>
+            <div id="userInfoBar" class="user-info-bar" style="display: none;">
+                <span id="userInfoText" class="user-info-text"></span>
+                <button id="logoutBtn" class="btn btn-logout" aria-label="Sign out">Sign Out</button>
+            </div>
         </header>
 
         <main class="main-grid">
             <!-- Session Management -->
-            <div class="section session-section" role="region" aria-label="Session Management">
+            <div class="section session-section" role="region" aria-label="Session Management" hidden>
                 <h2>Session Management</h2>
                 <div class="session-controls">
                     <input type="text" id="sessionId" placeholder="Enter session ID or leave blank for new session" aria-label="Session ID input">
@@ -24,53 +37,6 @@
                     <button id="loadSession" class="btn btn-secondary" aria-label="Load existing session">Load Session</button>
                 </div>
                 <div id="currentSession" class="current-session" aria-live="polite"></div>
-            </div>
-
-            <!-- File Upload Section -->
-            <div class="section upload-section" role="region" aria-label="Document Upload">
-                <h2>📄 Document Upload</h2>
-                <div class="upload-area" id="documentUpload" role="button" tabindex="0" aria-label="Drag and drop area for CV documents">
-                    <div class="upload-content">
-                        <div class="upload-icon" aria-hidden="true">📁</div>
-                        <p>Drag & drop PDF or DOCX files here</p>
-                        <p>or <button class="btn-link" id="browseFiles">browse files</button></p>
-                        <input type="file" id="fileInput" accept=".pdf,.docx" hidden aria-label="File input for CV documents">
-                    </div>
-                </div>
-                <div id="uploadProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Upload progress">
-                    <div class="progress-fill"></div>
-                </div>
-                <div id="uploadResult" class="result-area" aria-live="polite"></div>
-            </div>
-
-            <!-- Audio Section -->
-            <div class="section audio-section" role="region" aria-label="Voice Interaction">
-                <h2>🎤 Voice Interaction</h2>
-                <div class="audio-controls">
-                    <div class="record-section">
-                        <button id="recordBtn" class="btn btn-record" aria-label="Start or stop voice recording">
-                            <span class="record-icon" aria-hidden="true">🔴</span>
-                            Start Recording
-                        </button>
-                        <div id="recordingStatus" class="recording-status" aria-live="polite"></div>
-                        <audio id="audioPlayback" controls style="display: none;" aria-label="Audio playback"></audio>
-                    </div>
-                    <div class="upload-audio-section">
-                        <h3>Or upload audio file</h3>
-                        <div class="audio-upload-area" id="audioUpload" role="button" tabindex="0" aria-label="Drag and drop area for audio files">
-                            <div class="upload-content">
-                                <div class="upload-icon" aria-hidden="true">🎵</div>
-                                <p>Drag & drop audio files here</p>
-                                <p>or <button class="btn-link" id="browseAudioFiles">browse audio files</button></p>
-                                <input type="file" id="audioFileInput" accept=".mp3,.wav,.webm,.m4a,.ogg" hidden aria-label="Audio file input">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div id="audioProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Audio processing progress">
-                    <div class="progress-fill"></div>
-                </div>
-                <div id="transcriptionResult" class="result-area" aria-live="polite"></div>
             </div>
 
             <!-- Chat Interface -->
@@ -97,6 +63,36 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Audio Section -->
+            <div class="section audio-section" role="region" aria-label="Voice Interaction">
+                <h2>🎤 Voice Interaction</h2>
+                <div class="audio-controls">
+                    <div class="record-section">
+                        <button id="recordBtn" class="btn btn-record" aria-label="Start or stop voice recording">
+                            <span class="record-icon" aria-hidden="true">🔴</span>
+                            Start Recording
+                        </button>
+                        <div id="recordingStatus" class="recording-status" aria-live="polite"></div>
+                        <audio id="audioPlayback" controls style="display: none;" aria-label="Audio playback"></audio>
+                    </div>
+                    <div class="upload-audio-section">
+                        <h3>Or upload audio file</h3>
+                        <div class="audio-upload-area" id="audioUpload" role="button" tabindex="0" aria-label="Drag and drop area for audio files">
+                            <div class="upload-content">
+                                <div class="upload-icon" aria-hidden="true">🎵</div>
+                                <p>Drag &amp; drop audio files here</p>
+                                <p>or <button class="btn-link" id="browseAudioFiles">browse audio files</button></p>
+                                <input type="file" id="audioFileInput" accept=".mp3,.wav,.webm,.m4a,.ogg,.flac,.mp4,.mpeg,.mpga" hidden aria-label="Audio file input">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="audioProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Audio processing progress">
+                    <div class="progress-fill"></div>
+                </div>
+                <div id="transcriptionResult" class="result-area" aria-live="polite"></div>
             </div>
 
             <!-- CV Preview -->
@@ -130,6 +126,23 @@
                         <p>Upload a document, record audio, or start chatting to begin</p>
                     </div>
                 </div>
+            </div>
+
+            <!-- File Upload Section -->
+            <div class="section upload-section" role="region" aria-label="Document Upload">
+                <h2>📄 Document Upload</h2>
+                <div class="upload-area" id="documentUpload" role="button" tabindex="0" aria-label="Drag and drop area for CV documents">
+                    <div class="upload-content">
+                        <div class="upload-icon" aria-hidden="true">📁</div>
+                        <p>Drag &amp; drop PDF or DOCX files here</p>
+                        <p>or <button class="btn-link" id="browseFiles">browse files</button></p>
+                        <input type="file" id="fileInput" accept=".pdf,.docx" hidden aria-label="File input for CV documents">
+                    </div>
+                </div>
+                <div id="uploadProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Upload progress">
+                    <div class="progress-fill"></div>
+                </div>
+                <div id="uploadResult" class="result-area" aria-live="polite"></div>
             </div>
         </main>
 
@@ -166,11 +179,37 @@
             </div>
         </div>
 
-        <footer>
-            <p>&copy; 2024 NTT DATA CV Builder Automation - Advanced AI-Powered CV Generation</p>
+        <footer class="app-footer">
+            <p class="footer-note">&copy; 2026 NTT DATA CV Builder Automation</p>
         </footer>
     </div>
 
-    <script src="app.js"></script>
+    <!-- Login Modal -->
+    <div id="loginOverlay" class="login-overlay" style="display: none;" role="dialog" aria-labelledby="loginTitle" aria-modal="true">
+        <div class="login-card">
+            <div class="login-header">
+                <h2 id="loginTitle">🔐 Sign In</h2>
+                <p>CV Builder Automation</p>
+            </div>
+            <form id="loginForm" class="login-form" autocomplete="on">
+                <div class="login-field">
+                    <label for="loginUsername">Username</label>
+                    <input type="text" id="loginUsername" name="username" placeholder="e.g. admin_demo" autocomplete="username" required>
+                </div>
+                <div class="login-field">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" name="password" placeholder="Password" autocomplete="current-password" required>
+                </div>
+                <div id="loginError" class="login-error" style="display: none;"></div>
+                <button type="submit" id="loginBtn" class="btn btn-primary login-btn">Sign In</button>
+            </form>
+            <div class="login-hint">
+                <strong>Demo accounts:</strong>
+                <code>Use a seeded username (for example admin_demo) and your configured seed password</code>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=modern2"></script>
 </body>
 </html>

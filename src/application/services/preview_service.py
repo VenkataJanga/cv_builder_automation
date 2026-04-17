@@ -373,11 +373,19 @@ class PreviewService:
         if lowered in _INVALID_LOCATION_VALUES:
             return ""
 
-        lowered = lowered.removeprefix("and ").removeprefix("is ").removeprefix("in ").strip(" ,.;:-")
-        if not lowered or lowered in _INVALID_LOCATION_VALUES:
+        # Strip parser noise prefixes while preserving original user casing.
+        cleaned = text
+        for prefix in ("and ", "is ", "in "):
+            if cleaned.lower().startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+                break
+
+        cleaned = cleaned.strip(" ,.;:-")
+        cleaned_lower = cleaned.lower()
+        if not cleaned or cleaned_lower in _INVALID_LOCATION_VALUES:
             return ""
 
-        return lowered.title()
+        return cleaned
 
     def _format_project_duration(self, project_dict):
         from_date = (

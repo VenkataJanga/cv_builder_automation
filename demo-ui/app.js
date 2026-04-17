@@ -1,7 +1,7 @@
 // CV Builder Automation - Comprehensive JavaScript Implementation
 class CVBuilderApp {
     constructor({ autoInit = true } = {}) {
-        this.apiBase = 'http://localhost:8000';
+        this.apiBase = window.location.origin;
         this.currentSessionId = null;
         this.mediaRecorder = null;
         this.audioChunks = [];
@@ -9,7 +9,9 @@ class CVBuilderApp {
         this.currentCVData = null;
         this.isEditMode = false;
         this.editableData = null;
-        
+        this.token = localStorage.getItem('cv_builder_token') || null;
+        this.currentUser = null;
+
         if (autoInit) {
             this.init();
         }
@@ -19,10 +21,133 @@ class CVBuilderApp {
         this.bindEvents();
         this.checkServerStatus();
         this.setupDragAndDrop();
-        this.initializeChat();
+        this.checkAuthStatus();
     }
 
+    // ── Auth helpers ──────────────────────────────────────────────────────────
+
+    getAuthHeaders() {
+        return this.token ? { 'Authorization': `Bearer ${this.token}` } : {};
+    }
+
+    async request(url, options = {}) {
+        const headers = {
+            ...(options.headers || {}),
+            ...this.getAuthHeaders(),
+        };
+        const response = await fetch(url, { ...options, headers });
+        if (response.status === 401) {
+            this.logout();
+            throw new Error('Session expired. Please sign in again.');
+        }
+        return response;
+    }
+
+    async checkAuthStatus() {
+        if (!this.token) {
+            this.showLoginOverlay();
+            return;
+        }
+        try {
+            const res = await fetch(`${this.apiBase}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${this.token}` },
+            });
+            if (res.ok) {
+                this.currentUser = await res.json();
+                this.showUserInfoBar();
+                this.initializeChat();
+            } else {
+                this.logout();
+            }
+        } catch {
+            this.logout();
+        }
+    }
+
+    showLoginOverlay() {
+        const overlay = document.getElementById('loginOverlay');
+        if (overlay) overlay.style.display = 'flex';
+        const bar = document.getElementById('userInfoBar');
+        if (bar) bar.style.display = 'none';
+    }
+
+    hideLoginOverlay() {
+        const overlay = document.getElementById('loginOverlay');
+        if (overlay) overlay.style.display = 'none';
+    }
+
+    showUserInfoBar() {
+        const bar = document.getElementById('userInfoBar');
+        const text = document.getElementById('userInfoText');
+        if (this.currentUser && text) {
+            const role = this.currentUser.role || '';
+            text.textContent = `👤 ${this.currentUser.username}  •  ${role}`;
+        }
+        if (bar) bar.style.display = 'flex';
+    }
+
+    async login(username, password) {
+        const loginBtn = document.getElementById('loginBtn');
+        const errorDiv = document.getElementById('loginError');
+        loginBtn.disabled = true;
+        loginBtn.textContent = 'Signing in…';
+        errorDiv.style.display = 'none';
+
+        try {
+            const body = new URLSearchParams({ username, password });
+            const res = await fetch(`${this.apiBase}/auth/token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || 'Invalid credentials');
+            }
+
+            const data = await res.json();
+            this.token = data.access_token;
+            localStorage.setItem('cv_builder_token', this.token);
+
+            // Fetch current user profile
+            const meRes = await fetch(`${this.apiBase}/auth/me`, {
+                headers: { 'Authorization': `Bearer ${this.token}` },
+            });
+            this.currentUser = meRes.ok ? await meRes.json() : { username };
+
+            this.hideLoginOverlay();
+            this.showUserInfoBar();
+            this.initializeChat();
+        } catch (err) {
+            errorDiv.textContent = err.message;
+            errorDiv.style.display = 'block';
+        } finally {
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Sign In';
+        }
+    }
+
+    logout() {
+        this.token = null;
+        this.currentUser = null;
+        localStorage.removeItem('cv_builder_token');
+        this.showLoginOverlay();
+        this.showNotification('Signed out.', 'info');
+    }
+
+    // ── Event binding ─────────────────────────────────────────────────────────
+
     bindEvents() {
+        // Login / logout
+        document.getElementById('loginForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value.trim();
+            const password = document.getElementById('loginPassword').value;
+            this.login(username, password);
+        });
+        document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+
         // Session Management
         document.getElementById('createSession').addEventListener('click', () => this.createSession());
         document.getElementById('loadSession').addEventListener('click', () => this.loadSession());
@@ -108,7 +233,7 @@ class CVBuilderApp {
 
     async createConversationSession() {
         try {
-            const response = await fetch(`${this.apiBase}/chat/conversations/session`, {
+            const response = await this.request(`${this.apiBase}/chat/conversations/session`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -147,7 +272,7 @@ class CVBuilderApp {
 
     async createSession() {
         try {
-            const response = await fetch(`${this.apiBase}/session/start`, {
+            const response = await this.request(`${this.apiBase}/session/start`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' }
             });
@@ -173,7 +298,7 @@ class CVBuilderApp {
         }
 
         try {
-            const response = await fetch(`${this.apiBase}/session/${sessionId}`, {
+            const response = await this.request(`${this.apiBase}/session/${sessionId}`, {
                 method: 'GET'
             });
 
@@ -209,7 +334,7 @@ class CVBuilderApp {
                 formData.append('session_id', this.currentSessionId);
             }
 
-            const response = await fetch(`${this.apiBase}/cv/upload/document`, {
+            const response = await this.request(`${this.apiBase}/cv/upload/document`, {
                 method: 'POST',
                 body: formData
             });
@@ -289,31 +414,66 @@ class CVBuilderApp {
     async handleAudioUpload(file) {
         if (!file) return;
 
-        if (!file.type.match(/audio\/.*/)) {
-            this.showNotification('Please select an audio file', 'error');
+        // Accept audio/* MIME types OR common audio extensions for files where
+        // the browser reports an empty/octet-stream type (e.g. .mp3 on some OS).
+        const audioExtensions = /\.(mp3|mp4|wav|m4a|ogg|flac|webm|mpeg|mpga)$/i;
+        const isAudioMime = file.type.startsWith('audio/');
+        const isAudioExt = audioExtensions.test(file.name);
+
+        if (!isAudioMime && !isAudioExt) {
+            this.showNotification('Please select an audio file (mp3, wav, m4a, ogg, flac, webm)', 'error');
+            return;
+        }
+
+        // Guard against files the server will reject (server limit: 25 MB / ~12 min).
+        const MAX_AUDIO_MB = 25;
+        if (file.size > MAX_AUDIO_MB * 1024 * 1024) {
+            this.showNotification(
+                `Audio file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). ` +
+                `Maximum allowed is ${MAX_AUDIO_MB} MB (~10–12 minutes of audio).`,
+                'error'
+            );
             return;
         }
 
         await this.processAudio(file);
     }
 
-    async processAudio(audioBlob) {
+    async processAudio(audioBlob, retryOnInvalidSession = true) {
         this.showProgress('audioProgress', 'Processing audio...');
 
         try {
             const formData = new FormData();
-            formData.append('file', audioBlob, 'recording.webm');
-            if (this.currentSessionId) {
-                formData.append('session_id', this.currentSessionId);
+            // Use real filename so Whisper can detect the audio format from the extension.
+            // For recorded blobs (no .name), fall back to recording.webm.
+            const filename = audioBlob.name || 'recording.webm';
+            formData.append('file', audioBlob, filename);
+            const sessionIdToSend = typeof this.currentSessionId === 'string'
+                ? this.currentSessionId.trim()
+                : '';
+            if (sessionIdToSend) {
+                formData.append('session_id', sessionIdToSend);
             }
 
-            const response = await fetch(`${this.apiBase}/speech/transcribe`, {
+            const response = await this.request(`${this.apiBase}/speech/transcribe`, {
                 method: 'POST',
                 body: formData
             });
 
             if (response.ok) {
                 const data = await response.json();
+
+                if (data.error) {
+                    // If the in-memory backend session was reset, retry once without stale session_id.
+                    if (retryOnInvalidSession && /invalid session/i.test(String(data.error))) {
+                        this.currentSessionId = null;
+                        this.updateStatus('sessionStatus', 'No active session', '');
+                        this.updateStatus('lastUpdate', new Date().toLocaleTimeString(), '');
+                        return await this.processAudio(audioBlob, false);
+                    }
+                    throw new Error(data.error);
+                }
+
                 this.currentCVData = data.cv_data || data.extracted_cv_data;
                 this.currentSessionId = data.session_id || this.currentSessionId;
 
@@ -339,7 +499,13 @@ class CVBuilderApp {
                 
                 document.getElementById('recordingStatus').textContent = '';
             } else {
-                throw new Error('Audio processing failed');
+                // Read the server error detail so the user sees the actual failure reason.
+                let detail = `HTTP ${response.status}`;
+                try {
+                    const errBody = await response.json();
+                    detail = errBody.detail || errBody.message || detail;
+                } catch (_) { /* ignore parse errors */ }
+                throw new Error(detail);
             }
         } catch (error) {
             this.hideProgress('audioProgress');
@@ -366,7 +532,7 @@ class CVBuilderApp {
         input.value = '';
 
         try {
-            const response = await fetch(`${this.apiBase}/chat`, {
+            const response = await this.request(`${this.apiBase}/chat`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
@@ -641,7 +807,7 @@ class CVBuilderApp {
             }
 
             // Use the correct review endpoint as per HITL documentation
-            const response = await fetch(`${this.apiBase}/cv/review/${this.currentSessionId}`, {
+            const response = await this.request(`${this.apiBase}/cv/review/${this.currentSessionId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cv_data: mappedData })
@@ -976,7 +1142,22 @@ class CVBuilderApp {
         const skills = cvData.skills || {};
         const education = cvData.education || [];
         const workExperience = cvData.work_experience || [];
-        const projectExperience = cvData.project_experience || cvData.experience?.projects || [];
+        const projectExperience = (() => {
+            const candidates = [
+                cvData.project_experience,
+                cvData.projectExperience,
+                cvData.projects,
+                cvData.experience?.projects,
+                cvData.experience?.project_experience,
+                cvData.experience?.projectExperience,
+            ];
+            for (const candidate of candidates) {
+                if (Array.isArray(candidate) && candidate.length > 0) {
+                    return candidate;
+                }
+            }
+            return [];
+        })();
         
         let html = '<form id="cvEditForm" class="cv-edit-sections">';
         
@@ -1076,7 +1257,17 @@ class CVBuilderApp {
                        cvData.skills?.secondary_skills || cvData.skills?.secondarySkills || [];
         const toolsPlatforms = skills.tools_and_platforms || skills.toolsAndPlatforms || cvData.tools_and_platforms || cvData.toolsAndPlatforms ||
                               cvData.ai_frameworks || cvData.cloud_platforms || [];
-        const domainExpertise = skills.domain_expertise || skills.domainExpertise || cvData.domain_expertise || cvData.domainExpertise || cvData.experience?.domainExperience || [];
+        const domainExpertise = (skills.domain_expertise
+            || skills.domainExpertise
+            || skills.domains
+            || cvData.domain_expertise
+            || cvData.domainExpertise
+            || cvData.domains
+            || cvData.experience?.domainExperience
+            || cvData.experience?.domain_expertise
+            || cvData.experience?.domainExpertise
+            || cvData.experience?.domains
+            || []);
         
         html += `
             <div class="edit-section">
@@ -1582,7 +1773,7 @@ class CVBuilderApp {
             }
 
             // Save to backend
-            const response = await fetch(`${this.apiBase}/cv/review/${this.currentSessionId}`, {
+            const response = await this.request(`${this.apiBase}/cv/review/${this.currentSessionId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ cv_data: updatedData })
@@ -1842,7 +2033,7 @@ class CVBuilderApp {
         }
 
         try {
-            const response = await fetch(`${this.apiBase}/preview/${this.currentSessionId}`);
+            const response = await this.request(`${this.apiBase}/preview/${this.currentSessionId}`);
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -1997,7 +2188,12 @@ class CVBuilderApp {
             if (!raw) return '';
             const lowered = raw.toLowerCase().replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '');
             const invalidValues = new Set(['and', 'na', 'n/a', 'none', 'null', 'unknown', 'not available']);
-            return invalidValues.has(lowered) ? '' : raw;
+            const cleaned = lowered
+                .replace(/^and\s+/i, '')
+                .replace(/^is\s+/i, '')
+                .replace(/^in\s+/i, '')
+                .trim();
+            return invalidValues.has(cleaned) ? '' : raw.replace(/^(and|is|in)\s+/i, '').trim();
         };
 
         const sanitizeSecondarySkills = (skills) => {
@@ -2040,13 +2236,14 @@ class CVBuilderApp {
         if (profile) {
             const safeLocation = sanitizeLocation(profile.location);
             const safeCurrentTitle = sanitizeCurrentTitle(profile.current_title);
+            const portalId = profile.portal_id || profile.employee_id || cvData.portal_id || cvData.employee_id || '';
             html += '<div class="cv-header">';
             if (profile.full_name) html += `<h1>${profile.full_name}</h1>`;
             if (safeCurrentTitle) html += `<h2>${safeCurrentTitle}</h2>`;
             if (profile.current_organization) html += `<p><strong>Organization:</strong> ${profile.current_organization}</p>`;
             if (profile.total_experience) html += `<p><strong>Experience:</strong> ${profile.total_experience} years</p>`;
             if (profile.target_role) html += `<p><strong>Target Role:</strong> ${profile.target_role}</p>`;
-            if (profile.employee_id) html += `<p><strong>Employee ID:</strong> ${profile.employee_id}</p>`;
+            if (portalId) html += `<p><strong>Portal ID:</strong> ${portalId}</p>`;
             if (profile.email) html += `<p><strong>Email:</strong> ${profile.email}</p>`;
             if (safeLocation) html += `<p><strong>Location:</strong> ${safeLocation}</p>`;
             html += '</div>';
@@ -2110,31 +2307,54 @@ class CVBuilderApp {
         }
 
         // Project Experience
-        if (cvData.project_experience && cvData.project_experience.length > 0) {
+        const projectExperience = (() => {
+            const candidates = [
+                cvData.project_experience,
+                cvData.projectExperience,
+                cvData.projects,
+                cvData.experience?.projects,
+                cvData.experience?.project_experience,
+                cvData.experience?.projectExperience,
+            ];
+            for (const candidate of candidates) {
+                if (Array.isArray(candidate) && candidate.length > 0) {
+                    return candidate;
+                }
+            }
+            return [];
+        })();
+
+        if (projectExperience.length > 0) {
             html += `<h3>Project Experience</h3>`;
-            cvData.project_experience.forEach(proj => {
+            projectExperience.forEach(proj => {
                 html += `<div class="project-item">`;
                 
                 // Handle multiple field name variations for project name
-                const projectName = proj.project_name || proj.name || proj.title;
+                const projectName = proj.project_name || proj.projectName || proj.name || proj.title;
                 if (projectName) html += `<h4>${projectName}</h4>`;
                 
                 // Handle multiple field name variations for client
-                const clientName = proj.client || proj.client_name;
+                const clientName = proj.client || proj.client_name || proj.clientName;
                 if (clientName) html += `<p><strong>Client:</strong> ${clientName}</p>`;
                 
                 // Display role if available
-                if (proj.role) html += `<p><strong>Role:</strong> ${proj.role}</p>`;
+                const role = proj.role || proj.designation || proj.role_title || proj.position;
+                if (role) html += `<p><strong>Role:</strong> ${role}</p>`;
                 
                 // Display duration if available
-                if (proj.duration) html += `<p><strong>Duration:</strong> ${proj.duration}</p>`;
+                const duration = proj.duration || (proj.durationFrom && proj.durationTo ? `${proj.durationFrom} to ${proj.durationTo}` : (proj.durationFrom || proj.durationTo || ''));
+                if (duration) html += `<p><strong>Duration:</strong> ${duration}</p>`;
                 
                 // Display team size if available
-                if (proj.team_size) html += `<p><strong>Team Size:</strong> ${proj.team_size}</p>`;
+                const teamSize = proj.team_size || proj.teamSize;
+                if (teamSize) html += `<p><strong>Team Size:</strong> ${teamSize}</p>`;
                 
                 // Handle multiple field name variations for technologies
-                const technologies = proj.technologies_used || proj.technologies || proj.toolsUsed || [];
-                if (technologies && technologies.length > 0) {
+                const technologies = normalizeList(
+                    proj.technologies_used || proj.technologies || proj.toolsUsed || proj.environment || [],
+                    ['name', 'label', 'value', 'title']
+                );
+                if (technologies.length > 0) {
                     html += `<p><strong>Technologies:</strong> ${technologies.join(', ')}</p>`;
                 }
                 
@@ -2143,16 +2363,18 @@ class CVBuilderApp {
                 if (description) html += `<p>${description}</p>`;
                 
                 // Display responsibilities if available
-                if (proj.responsibilities && proj.responsibilities.length > 0) {
+                const responsibilities = normalizeList(proj.responsibilities || [], ['description', 'value', 'title']);
+                if (responsibilities.length > 0) {
                     html += `<p><strong>Responsibilities:</strong></p><ul>`;
-                    proj.responsibilities.forEach(resp => html += `<li>${resp}</li>`);
+                    responsibilities.forEach(resp => html += `<li>${resp}</li>`);
                     html += `</ul>`;
                 }
                 
                 // Display outcomes/achievements if available
-                if (proj.outcomes && proj.outcomes.length > 0) {
+                const outcomes = normalizeList(proj.outcomes || proj.achievements || [], ['description', 'value', 'title']);
+                if (outcomes.length > 0) {
                     html += `<p><strong>Outcomes:</strong></p><ul>`;
-                    proj.outcomes.forEach(outcome => html += `<li>${outcome}</li>`);
+                    outcomes.forEach(outcome => html += `<li>${outcome}</li>`);
                     html += `</ul>`;
                 }
                 
@@ -2202,7 +2424,13 @@ class CVBuilderApp {
         }
 
         const toolsPlatforms = normalizeList(
-            cvData.skills?.tools_and_platforms || cvData.skills?.toolsAndPlatforms || cvData.tools_and_platforms || cvData.toolsAndPlatforms || []
+            cvData.skills?.tools_and_platforms
+                || cvData.skills?.toolsAndPlatforms
+                || cvData.skills?.platforms
+                || cvData.tools_and_platforms
+                || cvData.toolsAndPlatforms
+                || cvData.platforms
+                || []
         );
         if (toolsPlatforms && toolsPlatforms.length > 0) {
             html += `<h3>Tools, Platforms & Operating Systems</h3><ul>`;
@@ -2213,9 +2441,14 @@ class CVBuilderApp {
         const domainExpertise = normalizeList(
             cvData.domain_expertise
                 || cvData.domainExpertise
+                || cvData.domains
                 || cvData.skills?.domain_expertise
                 || cvData.skills?.domainExpertise
+                || cvData.skills?.domains
                 || cvData.experience?.domainExperience
+                || cvData.experience?.domain_expertise
+                || cvData.experience?.domainExpertise
+                || cvData.experience?.domains
                 || cvData.experience?.industriesWorked
                 || cvData.industries_worked
                 || cvData.industriesWorked
@@ -2307,7 +2540,7 @@ class CVBuilderApp {
             }
 
             // For PDF/DOCX, we would need export endpoints
-            const response = await fetch(`${this.apiBase}/export/${format}`, {
+            const response = await this.request(`${this.apiBase}/export/${format}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

@@ -51,6 +51,13 @@ FastAPI-based CV builder platform with conversational intake, document and audio
 
 Main API app: apps/api/main.py
 
+Client handoff prerequisites:
+- Copy `.env.example` to `.env` and fill in environment-specific secrets.
+- Optionally set `ENV` to auto-load `.env.<ENV>` first (for example `.env.dev`, `.env.prod`) with `.env` as fallback.
+- Do not ship a real `.env` file in source control or release bundles.
+- Ensure MySQL is available if `SESSION_REPOSITORY_BACKEND=mysql` is used.
+- By default, `SESSION_REPOSITORY_BACKEND` is `memory` and session data will not persist to `cv_sessions` after a server restart.
+
 Convenience launcher:
 
 		python run.py
@@ -59,9 +66,45 @@ Direct uvicorn run:
 
 		uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --reload
 
+Recommended local startup from the repository root:
+
+		pip install -e .
+		$env:PYTHONPATH='.'
+		$env:ENV='dev'
+		$env:SESSION_REPOSITORY_BACKEND='mysql'
+		python -m uvicorn apps.api.main:app --host 127.0.0.1 --port 8000 --reload
+
+One-command dev startup (PowerShell):
+
+		.\scripts\start_dev.ps1
+
+Optional flags:
+
+		.\scripts\start_dev.ps1 -SkipInstall
+		.\scripts\start_dev.ps1 -SessionBackend mysql -Port 8010
+
+Useful endpoints after startup:
+- `http://127.0.0.1:8000/`
+- `http://127.0.0.1:8000/health`
+- `http://127.0.0.1:8000/docs`
+
+Demo login for local validation:
+- Seed users with `python scripts/seed_auth_users.py`.
+- Set `SEED_DEMO_PASSWORD` before seeding and use that password with a seeded username (for example `admin_demo`).
+
+Database initialization for a fresh environment:
+
+		$env:PYTHONPATH='.'
+		$env:SEED_DEMO_PASSWORD='replace-with-strong-demo-password'
+		python -m alembic -c alembic.ini upgrade head
+		python scripts/seed_auth_users.py
+
 ## Project Architecture
 
 The system is organized into four functional modules. All modules converge into a canonical CV payload stored per session.
+
+For a current component mapping and layer diagram, see `docs/architecture.md`.
+
 
 ### Module 1: Conversational Session Intake
 
@@ -402,7 +445,7 @@ Response:
 	"question": "What is your current role/title?",
 	"cv_data": {
 		"personal_details": {
-			"full_name": "Venkata Janga"
+			"full_name": "Sample Candidate"
 		},
 		"summary": {},
 		"skills": {},
@@ -508,8 +551,8 @@ POST /cv/save
 	"canonical_cv": {
 		"schemaVersion": "1.1.0",
 		"candidate": {
-			"fullName": "Alex Doe",
-			"email": "alex@example.com",
+			"fullName": "Sample Candidate",
+			"email": "sample.candidate@example.com",
 			"currentLocation": {
 				"city": "Pune",
 				"country": "India"
@@ -532,7 +575,7 @@ Response:
 	"canonical_cv": {
 		"schemaVersion": "1.1.0",
 		"candidate": {
-			"fullName": "Alex Doe",
+			"fullName": "Sample Candidate",
 			"email": "alex@example.com",
 			"currentLocation": {
 				"city": "Pune",

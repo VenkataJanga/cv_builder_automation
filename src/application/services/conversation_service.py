@@ -8,16 +8,32 @@ from src.application.services.retrieval_service import RetrievalService
 from src.application.services.validation_service import ValidationService
 from src.ai.services.llm_enhancement_service import LLMEnhancementService
 from src.ai.services.langsmith_service import LangSmithService
+from src.core.config.settings import settings
 from src.questionnaire.answer_analyzer import AnswerAnalyzer
 from src.questionnaire.followup_engine import FollowupEngine
 from src.questionnaire.question_selector import select_initial_questions, select_questions
 from src.questionnaire.role_resolver import resolve_role
-from src.domain.session import InMemorySessionRepository, SessionService, SessionSourceType
+from src.domain.session import (
+    DatabaseSessionRepository,
+    FileSessionRepository,
+    InMemorySessionRepository,
+    SessionService,
+    SessionSourceType,
+)
+from src.infrastructure.persistence.mysql.database import SessionLocal
 from src.domain.session.models import CVSession
 
 
-SESSION_STORE: Dict[str, Dict[str, Any]] = {}
-_SESSION_REPOSITORY = InMemorySessionRepository()
+def _build_session_repository():
+    backend = (settings.SESSION_REPOSITORY_BACKEND or "memory").strip().lower()
+    if backend == "mysql":
+        return DatabaseSessionRepository(connection_factory=SessionLocal)
+    if backend == "file":
+        return FileSessionRepository(root_dir=settings.SESSION_FILE_STORE_PATH)
+    return InMemorySessionRepository()
+
+
+_SESSION_REPOSITORY = _build_session_repository()
 _SESSION_SERVICE = SessionService(repository=_SESSION_REPOSITORY)
 
 
@@ -292,9 +308,7 @@ class ConversationService:
         persisted = _SESSION_REPOSITORY.get_session(session_id)
         if not persisted:
             return {"error": "Invalid session_id"}
-        legacy = self._to_legacy_dict(persisted)
-        SESSION_STORE[session_id] = legacy
-        return legacy
+        return self._to_legacy_dict(persisted)
 
     def save_session(self, session_id: str, session_data: Dict[str, Any]) -> None:
         """
@@ -346,12 +360,8 @@ class ConversationService:
             created.touch()
             _SESSION_REPOSITORY.save_session(created)
 
-        SESSION_STORE[session_id] = dict(session_data)
-
     def reset_session(self, session_id: str) -> Dict[str, Any]:
         exists = _SESSION_REPOSITORY.get_session(session_id)
-        if session_id in SESSION_STORE:
-            del SESSION_STORE[session_id]
         if exists:
             _SESSION_REPOSITORY.delete_session(session_id)
             return {"message": "Session reset successfully"}

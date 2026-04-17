@@ -1,10 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.application.services.conversation_service import ConversationService
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
 
-router = APIRouter(prefix="/session", tags=["session"])
+router = APIRouter(prefix="/session", tags=["session"], dependencies=[Depends(get_current_user)])
 service = ConversationService()
 
 

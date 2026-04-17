@@ -6,11 +6,19 @@ Tests OpenAI API key from .env file to ensure it's working correctly.
 import os
 import pytest
 from pathlib import Path
+import httpx
 from openai import OpenAI, AzureOpenAI
 
 
 class TestAPIKeyValidation:
     """Tests to verify API keys are properly configured and working."""
+
+    @staticmethod
+    def _build_openai_client(api_key: str) -> OpenAI:
+        """Create a client with bounded network behavior for test stability."""
+        verify_ssl = os.getenv("OPENAI_VERIFY_SSL", "true").lower() == "true"
+        http_client = httpx.Client(verify=verify_ssl, timeout=20.0)
+        return OpenAI(api_key=api_key, timeout=20.0, max_retries=0, http_client=http_client)
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -39,7 +47,7 @@ class TestAPIKeyValidation:
         """Test that OpenAI client can be initialized with the API key."""
         api_key = os.getenv("OPENAI_API_KEY")
         try:
-            client = OpenAI(api_key=api_key)
+            client = self._build_openai_client(api_key)
             # Verify client has required attributes
             assert hasattr(client, 'chat'), "OpenAI client missing 'chat' attribute"
             assert hasattr(client, 'embeddings'), "OpenAI client missing 'embeddings' attribute"
@@ -51,7 +59,7 @@ class TestAPIKeyValidation:
         api_key = os.getenv("OPENAI_API_KEY")
         model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         
-        client = OpenAI(api_key=api_key)
+        client = self._build_openai_client(api_key)
         
         try:
             response = client.chat.completions.create(
@@ -79,7 +87,7 @@ class TestAPIKeyValidation:
         api_key = os.getenv("OPENAI_API_KEY")
         embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
         
-        client = OpenAI(api_key=api_key)
+        client = self._build_openai_client(api_key)
         
         try:
             response = client.embeddings.create(

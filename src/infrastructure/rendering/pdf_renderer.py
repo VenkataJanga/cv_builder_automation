@@ -48,7 +48,7 @@ class PdfRenderer:
     def __init__(self, template_name: str = "standard_nttdata"):
         self.template_name = template_name
 
-    def render(self, context: Dict[str, Any]) -> bytes:
+    def render(self, context: Dict[str, Any], template_style: str = "standard") -> bytes:
         """Render CV to PDF using template-based approach"""
         try:
             # Method 1: Convert from DOCX template

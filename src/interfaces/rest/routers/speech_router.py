@@ -1,7 +1,7 @@
 import os
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from src.application.services.conversation_service import ConversationService
 from src.application.services.speech_service import SpeechService
@@ -9,16 +9,27 @@ from src.application.services.audio_cv_service import AudioCVService
 from src.core.config.settings import settings
 from src.domain.cv.services.merge_cv import MergeCVService
 from src.domain.cv.enums import SourceType
+from src.core.constants import MAX_AUDIO_FILE_SIZE_MB
 from src.core.logging.logger import get_logger
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/speech", tags=["speech"])
+router = APIRouter(prefix="/speech", tags=["speech"], dependencies=[Depends(get_current_user)])
 
 speech_service = SpeechService()
 conversation_service = ConversationService()
 merge_service = MergeCVService()  # Keep for legacy cv_data backward compatibility
 audio_cv_service = AudioCVService()  # Phase 3: Canonical schema pipeline
+
+
+def _ensure_file_size_limit(file_bytes: bytes) -> None:
+    max_bytes = MAX_AUDIO_FILE_SIZE_MB * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {MAX_AUDIO_FILE_SIZE_MB} MB.",
+        )
 
 
 def _merge_legacy_cv_data(existing: dict, incoming: dict) -> dict:
@@ -68,8 +79,11 @@ async def transcribe_audio(
     os.makedirs(settings.LOCAL_STORAGE_PATH, exist_ok=True)
     file_path = os.path.join(settings.LOCAL_STORAGE_PATH, f"{uuid4()}_{file.filename}")
 
+    file_content = await file.read()
+    _ensure_file_size_limit(file_content)
+
     with open(file_path, "wb") as f:
-        f.write(await file.read())
+        f.write(file_content)
 
     try:
         # Step 1: Transcribe and enhance

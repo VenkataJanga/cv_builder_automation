@@ -494,6 +494,7 @@ class CanonicalAudioParser:
     _RESP_STOP = (
         r'(?=\s*(?:\d+\.\s+[A-Z]|Technologies?[:\s]|Skills?[:\s]|Client[:\s]|'
         r'Education[:\s]|\*\*Education|Certifications?[:\s]|'
+        r'Domain\s+(?:Expertise|Details?)[:\s]|\*\*Domain\s+(?:Expertise|Details?)|'
         r'My\s+(?:second|third|next)\s+project|$))'
     )
 
@@ -586,6 +587,8 @@ class CanonicalAudioParser:
         domain_patterns = [
             # Pattern 1: "**Domain Expertise**\nHealthcare, Banking" and "Domain Expertise: ..."
             r'(?:\*\*)?domain\s+expertise(?:\*\*)?\s*[:\-]?\s*(?:\n\s*)?([^\n\*]+)',
+            # Pattern 1b: "Domain Details: Healthcare, Banking"
+            r'(?:\*\*)?domain\s+details?(?:\*\*)?\s*[:\-]?\s*(?:\n\s*)?([^\n\*]+)',
             # Pattern 2: "Domains worked in: Healthcare, Banking"
             r'domains?\s+(?:worked\s+in|include|are)\s*[:\-]?\s*([^\n\*]+)',
             # Pattern 3: Conversational "its having healthcare, insurance, banking"
@@ -607,12 +610,14 @@ class CanonicalAudioParser:
 
             for token in re.split(r'[,;/|]', raw_domains):
                 item = token.strip(' .;:-*')
+                item = re.sub(r'^(?:domain\s+(?:details?|expertise)\s*[:\-]?\s*)', '', item, flags=re.IGNORECASE).strip(' .;:-')
+                item = re.sub(r'\s+domains?$', '', item, flags=re.IGNORECASE).strip(' .;:-')
                 # Remove trailing filler words
                 item = re.sub(r'\b(?:etc|etc\.|et\s+cetera)\b\s*$', '', item, flags=re.IGNORECASE).strip(' .;:-')
                 if len(item) < 3:
                     continue
                 # Filter out common section keywords or heading remnants.
-                if re.search(r'\b(project|education|certification|responsibilities|skills?|primary|secondary|domain\s+expertise|domain|domains)\b', item, re.IGNORECASE):
+                if re.search(r'\b(project|education|certification|responsibilities|skills?|primary|secondary|domain\s+expertise|domain\s+details?|domain|domains)\b', item, re.IGNORECASE):
                     continue
                 normalized = item.title()
                 if normalized not in extracted:
@@ -845,8 +850,8 @@ class CanonicalAudioParser:
 
         # Keep project extraction tightly scoped to the project experience portion of transcript.
         explicit_project_section = re.search(
-            r'(?is)(?:\*\*)?project\s+experience(?:\*\*)?\s*[:\-]?\s*(.+?)'
-            r'(?=\n\s*(?:\*\*)?(?:education|certifications?|languages?|operating\s+systems?|databases?|current\s+role)(?:\*\*)?\s*[:\-]?|\Z)',
+            r'(?is)(?:\*\*)?project\s+(?:experience|details?)(?:\*\*)?\s*[:\-]?\s*(.+?)'
+            r'(?=\n\s*(?:\*\*)?(?:education|certifications?|languages?|operating\s+systems?|databases?|current\s+role|domain\s+(?:expertise|details?))(?:\*\*)?\s*[:\-]?|\Z)',
             text,
         )
         if explicit_project_section:
@@ -1005,6 +1010,7 @@ class CanonicalAudioParser:
             r'(?:project\s+one|project\s+two|project\s+three|project\s+four|project\s+five)',
             r'(?:I\s+(?:also\s+)?worked\s+on)',
             r'(?:project\s+\d+)',
+            r'(?:project\s+details?)',
             r'(?:^\d+\.\s+)',
         ]
         
@@ -1079,6 +1085,7 @@ class CanonicalAudioParser:
     def _extract_project_name(self, text: str) -> Optional[str]:
         """Extract project name from segment - handles numbered list with (Client: X) format"""
         name_patterns = [
+            r'(?:project\s+(?:details?|name)\s*(?:is)?\s*[:\-]\s*)([^\n\.,]{3,120})',
             # Numbered list format: "1. Project Name (Client: X)"
             r'^\d+\.\s+([^(\n]+)\s*(?:\(Client:|\()',
             r'(?:project\s+(?:name\s+)?is)\s+([A-Z][^,\.]{3,60}?)(?:\s+and|\.|,)',
@@ -1113,6 +1120,7 @@ class CanonicalAudioParser:
         client_patterns = [
             # Parenthetical format: "(Client: Volkswagen)"
             r'\(Client:\s*([^)]+)\)',
+            r'(?:client\s+(?:details?|name)\s*(?:is)?\s*[:\-]\s*)([^\n\.,]{2,120})',
             r'(?:client\s+is)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
             r'(?:for|client[:\s]+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)',
         ]
@@ -1122,6 +1130,8 @@ class CanonicalAudioParser:
             if match:
                 client = match.group(1).strip()
                 # Clean up
+                client = re.sub(r'[\r\n]+', ' ', client)
+                client = re.sub(r'\s+', ' ', client).strip()
                 client = re.sub(r'[,\.]$', '', client).strip()
                 if len(client) > 2:
                     return client
@@ -1131,6 +1141,7 @@ class CanonicalAudioParser:
     def _extract_project_description(self, text: str) -> str:
         """Extract project description from segment"""
         desc_patterns = [
+            r'(?:project\s+details?\s*[:\-]\s*)(.+?)(?=\s*(?:client\s+(?:details?|name|is)\s*[:\-]?|client\s*[:\-]|coming\s+to\s+my\s+roles|roles\s+and\s+responsibilities|responsibilities\s*[:\-]|domain\s+(?:expertise|details?)\s*[:\-]|my\s+(?:second|third|next)\s+project|\d+\.\s+|education\s*[:\-]|i\s+have\s+completed\s+(?:a|my)\s+(?:master|bachelor)|$))',
             r'(?:project\s+description\s+is)\s+(.+?)(?=\s*(?:coming\s+to\s+my\s+roles|roles\s+and\s+responsibilities|my\s+(?:second|third|next)\s+project|\d+\.\s+|education\s*[:\-]|i\s+have\s+completed\s+(?:a|my)\s+(?:master|bachelor)|$))',
             r'(?:description[:\s]+)\s*(.+?)(?=\s*(?:coming\s+to\s+my\s+roles|roles\s+and\s+responsibilities|my\s+(?:second|third|next)\s+project|\d+\.\s+|education\s*[:\-]|i\s+have\s+completed\s+(?:a|my)\s+(?:master|bachelor)|$))',
         ]
@@ -1156,6 +1167,8 @@ class CanonicalAudioParser:
         # Fallback: derive a description by removing intro/client/responsibility clauses.
         simplified = text
         simplified = re.sub(r'(?is)^.*?(?:project\s+(?:name\s+)?is|my\s+(?:first|second|third|next)\s+project\s+is)\s+[A-Z][^\.\n]{0,120}[\.,]?', '', simplified)
+        simplified = re.sub(r'(?is)project\s+details?\s*[:\-]\s*', '', simplified)
+        simplified = re.sub(r'(?is)client\s+(?:details?|name)\s*[:\-]\s*[A-Z][^\.\n]{0,80}[\.,]?', '', simplified)
         simplified = re.sub(r'(?is)client\s+is\s+[A-Z][^\.\n]{0,80}[\.,]?', '', simplified)
         simplified = re.sub(r'(?is)\beducation\b\s*[:\-].*$', '', simplified)
         simplified = re.sub(r'(?is)\bi\s+have\s+completed\s+(?:a|my)\s+(?:master|bachelor).*$', '', simplified)

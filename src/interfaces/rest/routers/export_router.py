@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -10,9 +10,10 @@ from src.application.services.export_service import ExportService
 from src.infrastructure.rendering.template_engine import TemplateEngine
 from src.infrastructure.rendering.pdf_renderer import PdfRenderer
 from src.core.config.settings import settings
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
 # router MUST be defined before any @router.get / @router.post decorators
-router = APIRouter(prefix="/export", tags=["export"])
+router = APIRouter(prefix="/export", tags=["export"], dependencies=[Depends(get_current_user)])
 
 conversation_service = ConversationService()
 preview_service = PreviewService()

@@ -1,10 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.application.services.conversation_service import ConversationService
 from src.domain.cv.services.merge_cv import MergeCVService
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(get_current_user)])
 
 conversation_service = ConversationService()
 merge_service = MergeCVService()

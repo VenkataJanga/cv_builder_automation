@@ -11,7 +11,7 @@ import os
 from uuid import uuid4
 from typing import Dict, Any, List, Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel, ValidationError
 
 from src.application.commands.upload_cv import UploadCVCommand
@@ -20,9 +20,11 @@ from src.application.services.document_cv_service import DocumentCVService
 from src.application.services.schema_validation_service import SchemaValidationService
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 from src.domain.cv.services.merge_cv import MergeCVService
+from src.core.constants import MAX_FILE_SIZE_MB
 from src.core.config.settings import settings
+from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
-router = APIRouter(prefix="/cv", tags=["cv"])
+router = APIRouter(prefix="/cv", tags=["cv"], dependencies=[Depends(get_current_user)])
 logger = logging.getLogger(__name__)
 
 upload_cmd = UploadCVCommand()
@@ -30,6 +32,15 @@ conversation_service = ConversationService()
 merge_service = MergeCVService()
 schema_validation_service = SchemaValidationService()
 document_cv_service = DocumentCVService(conversation_service=conversation_service)
+
+
+def _ensure_file_size_limit(file_bytes: bytes) -> None:
+    max_bytes = MAX_FILE_SIZE_MB * 1024 * 1024
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE_MB} MB.",
+        )
 
 
 def _merge_legacy_cv_data(existing: Dict[str, Any], incoming: Dict[str, Any]) -> Dict[str, Any]:
@@ -64,8 +75,10 @@ def _merge_preview_into_canonical(cv_data: Dict[str, Any], existing_canonical: D
     canonical["experience"].setdefault("projects", [])
     canonical["experience"].setdefault("workHistory", [])
 
-    # Pull data from both 'personal_details' and 'header' (frontend may send either)
-    personal = cv_data.get("personal_details") or cv_data.get("header") or {}
+    # Pull data from both 'personal_details' and 'header' (frontend may send either).
+    personal_details = cv_data.get("personal_details") or {}
+    header_data = cv_data.get("header") or {}
+    personal = {**header_data, **personal_details}
     summary_data = cv_data.get("summary") or {}
     skills_data = cv_data.get("skills") or {}
 
@@ -551,6 +564,7 @@ async def upload_cv_document(
         
         # Read file content
         file_content = await file.read()
+        _ensure_file_size_limit(file_content)
         
         # Process the document upload (includes validation)
         result = document_cv_service.upload_cv_document(
@@ -690,6 +704,7 @@ async def upload_cv(
     )
 
     content = await file.read()
+    _ensure_file_size_limit(content)
     with open(save_path, "wb") as f:
         f.write(content)
 

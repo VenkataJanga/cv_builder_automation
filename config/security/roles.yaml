@@ -1,1 +1,6 @@
-roles:\n  - user\n  - reviewer\n  - approver\n  - admin\n
+roles:
+  - admin             # Full access to all features
+  - reviewer          # Can review and export CVs
+  - user              # Standard user: create, edit, export CVs
+  - delivery_manager  # Can review and approve CVs in addition to user permissions
+  - cv_editor         # Can create, edit, and export CVs

@@ -1,0 +1,57 @@
+apiVersion: 2024-03-01
+type: Microsoft.App/containerApps
+name: cv-builder-api
+location: eastus
+properties:
+  managedEnvironmentId: /subscriptions/<subscription-id>/resourceGroups/<rg>/providers/Microsoft.App/managedEnvironments/<env>
+  configuration:
+    ingress:
+      external: true
+      targetPort: 8000
+      transport: auto
+    secrets:
+      - name: db-host
+        value: <set-in-pipeline>
+      - name: db-port
+        value: "3306"
+      - name: db-name
+        value: <set-in-pipeline>
+      - name: db-user
+        value: <set-in-pipeline>
+      - name: db-password
+        value: <set-in-pipeline>
+      - name: secret-key
+        value: <set-in-pipeline>
+      - name: openai-api-key
+        value: <set-in-pipeline>
+  template:
+    containers:
+      - name: api
+        image: ghcr.io/your-org/cv-builder-api:latest
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+        env:
+          - name: ENV
+            value: prod
+          - name: ENABLE_RBAC
+            value: "true"
+          - name: SESSION_REPOSITORY_BACKEND
+            value: mysql
+          - name: DB_HOST
+            secretRef: db-host
+          - name: DB_PORT
+            secretRef: db-port
+          - name: DB_NAME
+            secretRef: db-name
+          - name: DB_USER
+            secretRef: db-user
+          - name: DB_PASSWORD
+            secretRef: db-password
+          - name: SECRET_KEY
+            secretRef: secret-key
+          - name: OPENAI_API_KEY
+            secretRef: openai-api-key
+    scale:
+      minReplicas: 1
+      maxReplicas: 5

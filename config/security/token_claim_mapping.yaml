@@ -1,0 +1,9 @@
+# Mapping between JWT token claims and application fields.
+# These keys must match what is encoded in create_access_token().
+claims:
+  subject:       sub        # username
+  user_id:       user_id    # integer primary key from users table
+  role:          role       # role string (must match Role enum values)
+  email:         email      # optional — included when available
+  full_name:     full_name  # optional — included when available
+  expiry:        exp        # standard JWT expiration (epoch seconds)

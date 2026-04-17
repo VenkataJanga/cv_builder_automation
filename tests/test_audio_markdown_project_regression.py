@@ -39,3 +39,25 @@ def test_placeholder_project_is_filtered_from_audio():
     projects = ((result.get("experience") or {}).get("projects") or [])
 
     assert projects == []
+
+
+def test_details_phrasing_extracts_project_client_and_domain():
+    parser = CanonicalAudioParser()
+    transcript = (
+        "Project details: Recommended Stock System. "
+        "Client details: Volkswagen. "
+        "Responsibilities: Built ETL workflows and dashboards. "
+        "Domain details: Automotive, Banking."
+    )
+
+    result = parser.parse(transcript)
+    experience = result.get("experience") or {}
+    projects = experience.get("projects") or []
+    domains = experience.get("domainExperience") or []
+
+    assert len(projects) == 1
+    assert projects[0].get("projectName") == "Recommended Stock System"
+    assert projects[0].get("clientName") == "Volkswagen"
+    assert "Built ETL workflows and dashboards." in (projects[0].get("responsibilities") or [])
+    assert "Automotive" in domains
+    assert "Banking" in domains

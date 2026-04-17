@@ -1,1 +1,33 @@
-permissions:\n  - create_cv\n  - review_cv\n  - approve_cv\n  - manage_templates\n
+permissions:
+  - create_cv
+  - edit_cv
+  - review_cv
+  - approve_cv
+  - export_cv
+  - manage_templates
+
+role_permissions:
+  admin:
+    - create_cv
+    - edit_cv
+    - review_cv
+    - approve_cv
+    - export_cv
+    - manage_templates
+  delivery_manager:
+    - create_cv
+    - edit_cv
+    - review_cv
+    - approve_cv
+    - export_cv
+  reviewer:
+    - review_cv
+    - export_cv
+  cv_editor:
+    - create_cv
+    - edit_cv
+    - export_cv
+  user:
+    - create_cv
+    - edit_cv
+    - export_cv

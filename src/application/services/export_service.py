@@ -109,8 +109,15 @@ class ExportService:
         if not isinstance(cv_data, dict):
             return cv_data
         
-        # Check if data is already in preview format (has 'header' or 'summary' keys)
-        if 'header' in cv_data or 'summary' in cv_data:
+        # Canonical CV can also contain a top-level 'summary' key; do not treat that alone
+        # as preview format.
+        is_preview_format = (
+            isinstance(cv_data.get("header"), dict)
+            or isinstance(cv_data.get("personal_details"), dict)
+            or isinstance(cv_data.get("skills"), dict)
+        ) and not isinstance(cv_data.get("candidate"), dict)
+
+        if is_preview_format:
             self.logger.info("Data already in preview format, using as-is for export")
             return cv_data
         
@@ -131,21 +138,31 @@ class ExportService:
         personal_details = cv_data.get("personal_details", {})
         personal_info = cv_data.get("personal_information", {})
         contact_info = cv_data.get("contact_info", {})
+        candidate = cv_data.get("candidate", {})
+        canonical_location = candidate.get("currentLocation", {}) if isinstance(candidate, dict) else {}
+
+        if isinstance(canonical_location, dict):
+            location_fallback = (
+                canonical_location.get("fullAddress")
+                or ", ".join(filter(None, [canonical_location.get("city"), canonical_location.get("country")]))
+            )
+        else:
+            location_fallback = canonical_location
         
         # Enhanced merge strategy: Try all possible field variations across all data structures
         # This fixes the phone number, portal ID, and other missing field issues
         # Priority: formatted header first, then various personal structures, then root cv_data
-        all_data_sources = [header, personal_details, personal_info, contact_info, cv_data]
+        all_data_sources = [header, personal_details, personal_info, contact_info, candidate, cv_data]
         
         # Enhanced field mapping with better data extraction
         context = {
             # Personal Information - Enhanced mapping with comprehensive field search
             "full_name": self._get_field_value_from_sources(all_data_sources, ["full_name", "name", "candidate_name"]),
             "employee_id": self._get_field_value_from_sources(all_data_sources, ["employee_id", "portal_id", "emp_id", "staff_id", "employee_number"]),
-            "email": self._get_field_value_from_sources(all_data_sources, ["email", "email_address", "email_id"]),
+            "email": self._get_field_value_from_sources(all_data_sources, ["email", "emailAddress", "email_address", "email_id"]),
             "contact_number": self._get_field_value_from_sources(all_data_sources, ["contact_number", "phone", "mobile", "contact", "phone_number", "mobile_number"]),
             "current_title": self._get_field_value_from_sources(all_data_sources, ["current_title", "title", "designation", "position", "job_title"]),
-            "location": self._get_field_value_from_sources(all_data_sources, ["location", "city", "address", "current_location"]),
+            "location": self._get_field_value_from_sources(all_data_sources, ["location", "city", "address", "current_location"]) or (str(location_fallback).strip() if location_fallback else ""),
             "organization": self._get_field_value_from_sources(all_data_sources, ["current_organization", "organization", "company", "employer", "current_company"]),
             "grade": self._get_field_value_from_sources(all_data_sources, ["grade", "level", "job_level"]),
             "experience": self._get_field_value_from_sources(all_data_sources, ["total_experience", "experience", "years_of_experience", "work_experience"]),

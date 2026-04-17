@@ -4,7 +4,12 @@ __pycache__/
 venv/
 env/
 .env
+.env.*
+!.env.example
 dist/
 build/
 *.log
 .vscode/
+log/*.json
+data/storage/uploads/
+data/storage/sessions/
