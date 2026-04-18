@@ -37,3 +37,19 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def ensure_schema_initialized() -> None:
+    """
+    Ensure database schema is initialized on application startup.
+    
+    This validates that the cv_sessions table exists with the expected structure.
+    If validation fails, the application will fail to start.
+    """
+    from src.domain.session.migration_guard import SessionSchemaMigrationGuard
+    
+    db = SessionLocal()
+    try:
+        SessionSchemaMigrationGuard.ensure_schema_initialized(db)
+    finally:
+        db.close()

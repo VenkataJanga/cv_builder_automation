@@ -4,17 +4,18 @@ from time import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from src.application.dto.auth_dto import CurrentUserResponse, TokenResponse
 from src.core.constants import (
     AUTH_ME_PATH,
     AUTH_PREFIX,
     AUTH_TAG,
     AUTH_TOKEN_PATH,
-    BEARER_TOKEN_TYPE,
     ERR_ACCOUNT_DISABLED,
     ERR_INCORRECT_USERNAME_OR_PASSWORD,
+    JWT_EMAIL_CLAIM,
+    JWT_FULL_NAME_CLAIM,
     JWT_ROLE_CLAIM,
     JWT_SUB_CLAIM,
     JWT_USER_ID_CLAIM,
@@ -63,11 +64,6 @@ def _reset_attempts(key: str) -> None:
         _AUTH_ATTEMPTS.pop(key, None)
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = BEARER_TOKEN_TYPE
-
-
 @router.post(AUTH_TOKEN_PATH, response_model=TokenResponse, summary="Obtain an access token")
 def login(
     request: Request,
@@ -104,23 +100,29 @@ def login(
         )
 
     token = create_access_token(
-        payload={JWT_SUB_CLAIM: user.username, JWT_USER_ID_CLAIM: user.id, JWT_ROLE_CLAIM: user.role.value}
+        payload={
+            JWT_SUB_CLAIM: user.username,
+            JWT_USER_ID_CLAIM: user.id,
+            JWT_ROLE_CLAIM: user.role.value,
+            JWT_EMAIL_CLAIM: user.email,
+            JWT_FULL_NAME_CLAIM: user.full_name or "",
+        }
     )
     _reset_attempts(limit_key)
     return TokenResponse(access_token=token)
 
 
-@router.get(AUTH_ME_PATH, summary="Current user info")
+@router.get(AUTH_ME_PATH, response_model=CurrentUserResponse, summary="Current user info")
 def current_user_info(
     current_user: CurrentUser = Depends(get_current_user),
 ) -> dict:
     """Returns profile and permissions of the currently authenticated user."""
-    return {
-        "user_id": current_user.user_id,
-        "username": current_user.username,
-        "email": current_user.email,
-        "full_name": current_user.full_name,
-        "role": current_user.role,
-        "permissions": [p.value for p in current_user.permissions],
-    }
+    return CurrentUserResponse(
+        user_id=current_user.user_id,
+        username=current_user.username,
+        email=current_user.email,
+        full_name=current_user.full_name,
+        role=current_user.role,
+        permissions=[p.value for p in current_user.permissions],
+    )
 

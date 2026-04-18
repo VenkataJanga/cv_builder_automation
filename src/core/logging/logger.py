@@ -36,6 +36,33 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log_record)
 
 
+class ReverseChronologicalFileHandler(logging.Handler):
+    """File handler that writes newest entries at the top of the file."""
+
+    def __init__(self, filename: Path, encoding: str = "utf-8"):
+        super().__init__()
+        self.baseFilename = str(Path(filename).resolve())
+        self.encoding = encoding
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = self.format(record)
+            if not message.endswith("\n"):
+                message += "\n"
+
+            self.acquire()
+            try:
+                file_path = Path(self.baseFilename)
+                existing = ""
+                if file_path.exists():
+                    existing = file_path.read_text(encoding=self.encoding, errors="ignore")
+                file_path.write_text(message + existing, encoding=self.encoding)
+            finally:
+                self.release()
+        except Exception:
+            self.handleError(record)
+
+
 # ---------------------------------------------------------
 # Logger Factory
 # ---------------------------------------------------------
@@ -44,6 +71,25 @@ def _ensure_log_path() -> Path:
     if not log_path.parent.exists():
         log_path.parent.mkdir(parents=True, exist_ok=True)
     return log_path.resolve()
+
+
+def _handler_targets_log_path(handler: logging.Handler, log_path: Path) -> bool:
+    base_filename = getattr(handler, "baseFilename", None)
+    if not base_filename:
+        return False
+    try:
+        return Path(base_filename).resolve() == log_path
+    except Exception:
+        return False
+
+
+def _create_file_handler(log_path: Path, formatter: logging.Formatter) -> logging.Handler:
+    if settings.LOG_NEWEST_FIRST:
+        handler = ReverseChronologicalFileHandler(log_path)
+    else:
+        handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(formatter)
+    return handler
 
 
 def _configure_root_logger() -> None:
@@ -62,16 +108,22 @@ def _configure_root_logger() -> None:
         if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
             root_logger.removeHandler(handler)
 
+    # Also strip stream handlers from any already-instantiated non-root loggers.
+    # Some third-party libraries attach their own StreamHandler instances.
+    logger_dict = logging.Logger.manager.loggerDict
+    for logger_name, logger_obj in logger_dict.items():
+        if not isinstance(logger_obj, logging.Logger):
+            continue
+        for handler in list(logger_obj.handlers):
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                logger_obj.removeHandler(handler)
+
     if settings.LOG_TO_FILE:
         log_path = _ensure_log_path()
-        file_handler_exists = any(
-            isinstance(handler, logging.FileHandler) and Path(handler.baseFilename).resolve() == log_path
-            for handler in root_logger.handlers
-        )
+        file_handler_exists = any(_handler_targets_log_path(handler, log_path) for handler in root_logger.handlers)
         created_root_file_handler = False
         if not file_handler_exists:
-            file_handler = logging.FileHandler(log_path, encoding="utf-8")
-            file_handler.setFormatter(formatter)
+            file_handler = _create_file_handler(log_path, formatter)
             root_logger.addHandler(file_handler)
             created_root_file_handler = True
 
@@ -82,14 +134,21 @@ def _configure_root_logger() -> None:
             for handler in list(app_logger.handlers):
                 if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
                     app_logger.removeHandler(handler)
-            if not any(
-                isinstance(handler, logging.FileHandler) and Path(handler.baseFilename).resolve() == log_path
-                for handler in app_logger.handlers
-            ):
-                uvicorn_file_handler = logging.FileHandler(log_path, encoding="utf-8")
-                uvicorn_file_handler.setFormatter(formatter)
+            if not any(_handler_targets_log_path(handler, log_path) for handler in app_logger.handlers):
+                uvicorn_file_handler = _create_file_handler(log_path, formatter)
                 app_logger.addHandler(uvicorn_file_handler)
             app_logger.propagate = False
+
+        # Keep file useful by reducing noisy framework internals while preserving app-level info.
+        noisy_logger_levels = {
+            "sqlalchemy.engine": logging.WARNING,
+            "watchfiles.main": logging.WARNING,
+            "watchgod.main": logging.WARNING,
+            "asyncio": logging.WARNING,
+        }
+        for logger_name, level in noisy_logger_levels.items():
+            noisy_logger = logging.getLogger(logger_name)
+            noisy_logger.setLevel(level)
 
         if created_root_file_handler:
             root_logger.info(f"Logging to file: {log_path.resolve()}")

@@ -6,7 +6,10 @@ class LLMEnhancementService:
         self.agent = EnhancementAgent()
 
     def enhance_transcript(self, normalized_transcript: str) -> dict:
-        enhanced = self.agent.professionalize_transcript_text(normalized_transcript)
+        # Use structure_cv_transcript so the output has the exact section headers
+        # that CanonicalAudioParser's markdown extraction path relies on.  If the
+        # LLM call fails the method falls back to basic text cleanup internally.
+        enhanced = self.agent.structure_cv_transcript(normalized_transcript)
         return {
             "normalized_transcript": normalized_transcript,
             "enhanced_transcript": enhanced,

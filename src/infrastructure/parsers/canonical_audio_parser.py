@@ -51,23 +51,51 @@ class CanonicalAudioParser:
             return self._create_empty_canonical()
         
         parser_text = self._normalize_parser_text(enhanced_transcript)
+        enhanced_fallback = self._extract_fallback_from_enhanced_parser(enhanced_transcript)
 
         personal_info = self._extract_personal_info(parser_text)
+        fallback_candidate = enhanced_fallback.get("candidate", {})
+        if not personal_info.get("fullName"):
+            personal_info["fullName"] = fallback_candidate.get("fullName")
+        if not personal_info.get("fullName"):
+            personal_info["fullName"] = self._extract_name_from_heading(enhanced_transcript)
+        if not personal_info.get("email"):
+            personal_info["email"] = fallback_candidate.get("email")
+        if not personal_info.get("phone"):
+            personal_info["phone"] = fallback_candidate.get("phone")
+        if not personal_info.get("portalId"):
+            personal_info["portalId"] = fallback_candidate.get("portalId")
+
         years_exp = self._extract_years_of_experience(parser_text)
+        if years_exp is None:
+            years_exp = self._extract_years_from_text(fallback_candidate.get("totalExperience", ""))
+
         experience = self._extract_experience_canonical(parser_text)
         education = self._deduplicate_education_entries(self._extract_education_canonical(parser_text))
 
         supplemental_experience = self._extract_structured_projects(enhanced_transcript)
+        fallback_projects = enhanced_fallback.get("projects", [])
         if self._score_projects(supplemental_experience) > self._score_projects(experience.get("projects", [])):
             experience["projects"] = supplemental_experience
+        if self._score_projects(fallback_projects) > self._score_projects(experience.get("projects", [])):
+            experience["projects"] = fallback_projects
 
         supplemental_education = self._deduplicate_education_entries(self._extract_structured_education(enhanced_transcript))
+        fallback_education = self._deduplicate_education_entries(enhanced_fallback.get("education", []))
         if len(supplemental_education) >= 2 and self._has_low_quality_education_entries(education):
             education = supplemental_education
         elif len(supplemental_education) >= 2 and self._score_education(supplemental_education) >= self._score_education(education):
             education = supplemental_education
         elif self._score_education(supplemental_education) > self._score_education(education):
             education = supplemental_education
+        if len(fallback_education) >= 2 and self._has_low_quality_education_entries(education):
+            education = fallback_education
+        elif self._score_education(fallback_education) > self._score_education(education):
+            education = fallback_education
+
+        parsed_designation = self._extract_current_role(parser_text) or fallback_candidate.get("currentDesignation")
+        parsed_summary = self._extract_professional_summary(parser_text) or fallback_candidate.get("summary") or ""
+        parsed_org = self._extract_organization(parser_text) or fallback_candidate.get("currentOrganization")
         
         canonical_cv = {
             "candidate": {
@@ -75,11 +103,11 @@ class CanonicalAudioParser:
                 "email": personal_info.get("email"),
                 "phoneNumber": personal_info.get("phone"),
                 "portalId": personal_info.get("portalId"),
-                "currentOrganization": self._extract_organization(parser_text),
-                "currentDesignation": self._extract_current_role(parser_text),
+                "currentOrganization": parsed_org,
+                "currentDesignation": parsed_designation,
                 "totalExperienceYears": years_exp,
                 "totalExperienceMonths": 0,
-                "summary": self._extract_professional_summary(parser_text) or "",
+                "summary": parsed_summary,
                 "currentLocation": personal_info.get("location", {})
             },
             "skills": self._extract_skills_canonical(parser_text),
@@ -102,6 +130,139 @@ class CanonicalAudioParser:
         }
         
         return canonical_cv
+
+    def _extract_fallback_from_enhanced_parser(self, enhanced_transcript: str) -> Dict[str, Any]:
+        """Extract normalized fallback data using EnhancedTranscriptParser output."""
+        fallback = {"candidate": {}, "projects": [], "education": []}
+        if not enhanced_transcript:
+            return fallback
+
+        try:
+            parsed = self.enhanced_transcript_parser.parse(enhanced_transcript)
+        except Exception:
+            return fallback
+
+        header = parsed.get("header", {}) or {}
+        summary = parsed.get("summary") or ""
+        fallback["candidate"] = {
+            "fullName": (header.get("full_name") or "").strip() or None,
+            "email": (header.get("email") or "").strip() or None,
+            "phone": (header.get("contact_number") or "").strip() or None,
+            "portalId": (header.get("employee_id") or "").strip() or None,
+            "currentDesignation": (header.get("current_title") or "").strip() or None,
+            "currentOrganization": (header.get("current_organization") or "").strip() or None,
+            "totalExperience": (header.get("total_experience") or "").strip(),
+            "summary": summary,
+        }
+
+        projects = []
+        for project in parsed.get("project_experience", []) or []:
+            if not isinstance(project, dict):
+                continue
+            project_name = (project.get("project_name") or project.get("name") or "").strip()
+            if not project_name or self._is_invalid_project_name(project_name):
+                continue
+
+            technologies = project.get("technologies_used") or project.get("technologies") or []
+            responsibilities = project.get("responsibilities") or []
+            description = (project.get("project_description") or project.get("description") or "").strip()
+            mapped = {
+                "projectName": project_name,
+                "clientName": (project.get("client") or project.get("client_name") or "").strip() or None,
+                "client": (project.get("client") or project.get("client_name") or "").strip() or None,
+                "role": (project.get("role") or "").strip() or None,
+                "projectDescription": description,
+                "description": description,
+                "startDate": None,
+                "endDate": None,
+                "durationMonths": None,
+                "toolsUsed": technologies if isinstance(technologies, list) else [str(technologies)],
+                "technologies": technologies if isinstance(technologies, list) else [str(technologies)],
+                "environment": technologies if isinstance(technologies, list) else [str(technologies)],
+                "teamSize": None,
+                "responsibilities": responsibilities if isinstance(responsibilities, list) else [str(responsibilities)],
+                "outcomes": [],
+                "achievements": [],
+            }
+            if not self._is_placeholder_project_entry(mapped):
+                projects.append(mapped)
+        fallback["projects"] = projects
+
+        education = []
+        for edu in parsed.get("education", []) or []:
+            if not isinstance(edu, dict):
+                continue
+            degree = (edu.get("qualification") or edu.get("degree") or "").strip()
+            specialization = (edu.get("specialization") or edu.get("field") or "").strip() or None
+            institution = (edu.get("college") or edu.get("institution") or "").strip() or None
+            university = (edu.get("university") or "").strip() or None
+            year = str(edu.get("year_of_passing") or edu.get("year") or "").strip() or None
+            score = str(edu.get("percentage") or edu.get("grade") or "").strip() or None
+            if not (degree or institution or university):
+                continue
+            education.append(
+                {
+                    "degree": degree,
+                    "specialization": specialization,
+                    "field": specialization,
+                    "institution": institution,
+                    "university": university,
+                    "yearOfPassing": year,
+                    "graduationYear": year,
+                    "percentage": score if score and score.endswith('%') else None,
+                    "grade": score if score and not score.endswith('%') else None,
+                    "gpa": score,
+                }
+            )
+        fallback["education"] = education
+        return fallback
+
+    def _extract_years_from_text(self, value: Any) -> Optional[int]:
+        """Extract integer years from values like '20 years'."""
+        text = str(value or "").strip()
+        if not text:
+            return None
+        match = re.search(r'\b(\d{1,2})\b', text)
+        if not match:
+            return None
+        years = int(match.group(1))
+        if 0 <= years <= 60:
+            return years
+        return None
+
+    def _extract_name_from_heading(self, text: str) -> Optional[str]:
+        """Extract candidate name from first markdown heading like '**Shraddha**'."""
+        source = str(text or "")
+        if not source.strip():
+            return None
+
+        match = re.search(r'(?m)^\s*\*\*([^*\n]{2,80})\*\*\s*$', source)
+        if not match:
+            return None
+
+        candidate = re.sub(r'\s+', ' ', match.group(1)).strip(' .,:;-')
+        if not candidate:
+            return None
+        if re.search(r'\d', candidate):
+            return None
+
+        blocked = {
+            "professional summary",
+            "project experience",
+            "experience summary",
+            "education",
+            "skills",
+            "certifications",
+            "domain expertise",
+            "thank you",
+        }
+        if candidate.lower() in blocked:
+            return None
+
+        if not re.match(r"^[A-Za-z][A-Za-z\s\.\'\-]{1,79}$", candidate):
+            return None
+
+        return candidate
 
     def _normalize_parser_text(self, text: str) -> str:
         """Normalize enhanced transcript formatting back into parser-friendly plain text."""

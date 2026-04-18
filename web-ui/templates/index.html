@@ -8,13 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=modern6">
+    <link rel="stylesheet" href="/static/css/styles.css?v=modern6">
 </head>
 <body>
     <div class="container">
         <header class="app-header">
             <div class="header-brand">
-                <img src="nttdata_logo.png" alt="NTT DATA" class="header-logo" />
+                <img src="/static/img/nttdata_logo.png" alt="NTT DATA" class="header-logo" />
                 <div class="header-logo-divider"></div>
                 <div class="header-text">
                     <h1 class="app-title">CV Builder Automation</h1>
@@ -23,6 +23,7 @@
             </div>
             <div id="userInfoBar" class="user-info-bar" style="display: none;">
                 <span id="userInfoText" class="user-info-text"></span>
+                <button id="clearSessionBtn" class="btn btn-secondary" aria-label="Clear current session">Clear Session</button>
                 <button id="logoutBtn" class="btn btn-logout" aria-label="Sign out">Sign Out</button>
             </div>
         </header>
@@ -48,7 +49,7 @@
                             <div class="message-content">
                                 Hello! I'm here to help you build your CV. You can:
                                 <ul>
-                                    <li>Upload your existing CV (PDF/DOCX)</li>
+                                    <li>Upload your existing CV (PDF/DOCX/DOC)</li>
                                     <li>Record yourself talking about your experience</li>
                                     <li>Chat with me to build your CV step by step</li>
                                 </ul>
@@ -134,9 +135,9 @@
                 <div class="upload-area" id="documentUpload" role="button" tabindex="0" aria-label="Drag and drop area for CV documents">
                     <div class="upload-content">
                         <div class="upload-icon" aria-hidden="true">📁</div>
-                        <p>Drag &amp; drop PDF or DOCX files here</p>
+                        <p>Drag &amp; drop PDF, DOCX, or DOC files here</p>
                         <p>or <button class="btn-link" id="browseFiles">browse files</button></p>
-                        <input type="file" id="fileInput" accept=".pdf,.docx" hidden aria-label="File input for CV documents">
+                        <input type="file" id="fileInput" accept=".pdf,.docx,.doc" hidden aria-label="File input for CV documents">
                     </div>
                 </div>
                 <div id="uploadProgress" class="progress-bar" style="display: none;" role="progressbar" aria-label="Upload progress">
@@ -194,7 +195,7 @@
             <form id="loginForm" class="login-form" autocomplete="on">
                 <div class="login-field">
                     <label for="loginUsername">Username</label>
-                    <input type="text" id="loginUsername" name="username" placeholder="e.g. admin_demo" autocomplete="username" required>
+                    <input type="text" id="loginUsername" name="username" placeholder="e.g. venkata.janga" autocomplete="username" required>
                 </div>
                 <div class="login-field">
                     <label for="loginPassword">Password</label>
@@ -204,12 +205,12 @@
                 <button type="submit" id="loginBtn" class="btn btn-primary login-btn">Sign In</button>
             </form>
             <div class="login-hint">
-                <strong>Demo accounts:</strong>
-                <code>Use a seeded username (for example admin_demo) and your configured seed password</code>
+                <strong>Pilot accounts:</strong>
+                <code>Use a seeded username (for example venkata.janga) and your configured seed password</code>
             </div>
         </div>
     </div>
 
-    <script src="app.js?v=modern2"></script>
+    <script src="/static/js/app.js?v=modern4"></script>
 </body>
 </html>

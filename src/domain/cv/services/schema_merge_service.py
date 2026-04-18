@@ -118,6 +118,20 @@ class SchemaMergeService:
             operation,
             source_type
         )
+
+        # Preserve unmapped details and source snapshots (data-loss prevention).
+        merged_cv["unmappedData"] = self._merge_extension_dict(
+            existing_dict.get("unmappedData", {}),
+            new_dict.get("unmappedData", {}),
+        )
+        merged_cv["sourceSnapshots"] = self._merge_extension_dict(
+            existing_dict.get("sourceSnapshots", {}),
+            new_dict.get("sourceSnapshots", {}),
+        )
+        merged_cv["mappingWarnings"] = list(existing_dict.get("mappingWarnings", []) or [])
+        for warning in new_dict.get("mappingWarnings", []) or []:
+            if warning not in merged_cv["mappingWarnings"]:
+                merged_cv["mappingWarnings"].append(warning)
         
         # Ensure top-level metadata is updated
         merged_cv["sourceType"] = source_type.value if hasattr(source_type, 'value') else str(source_type)
@@ -568,6 +582,35 @@ class SchemaMergeService:
             elif self._should_update_field(merged[key], value, source_type):
                 merged[key] = value
         
+        return merged
+
+    def _merge_extension_dict(
+        self,
+        existing: Dict[str, Any],
+        new_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Merge extension dictionaries while preserving all values.
+
+        - Dict values are merged recursively.
+        - List values are concatenated (preserving order).
+        - Scalar values keep existing unless it is empty.
+        """
+        merged = deepcopy(existing or {})
+        for key, value in (new_data or {}).items():
+            if value is None:
+                continue
+            if key not in merged:
+                merged[key] = deepcopy(value)
+                continue
+
+            existing_value = merged.get(key)
+            if isinstance(existing_value, dict) and isinstance(value, dict):
+                merged[key] = self._merge_extension_dict(existing_value, value)
+            elif isinstance(existing_value, list) and isinstance(value, list):
+                merged[key] = existing_value + [item for item in value if item not in existing_value]
+            elif existing_value in (None, "", [], {}):
+                merged[key] = deepcopy(value)
+
         return merged
     
     def _find_matching_project(

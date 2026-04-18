@@ -41,19 +41,19 @@ def seed_users() -> None:
     )
 
     # Require explicit configuration to avoid shipping known default credentials.
-    plain_password = os.getenv("SEED_DEMO_PASSWORD", "").strip()
+    plain_password = os.getenv("SEED_AUTH_PASSWORD", "").strip()
     if not plain_password:
         raise RuntimeError(
-            "SEED_DEMO_PASSWORD is required. Example: $env:SEED_DEMO_PASSWORD='replace-with-strong-demo-password'"
+            "SEED_AUTH_PASSWORD is required. Example: $env:SEED_AUTH_PASSWORD='replace-with-strong-password'"
         )
     hashed = hash_password(plain_password)
 
     users = [
-        ("admin_demo", "admin_demo@cvbuilder.local", "Admin Demo", hashed, "admin"),
-        ("reviewer_demo", "reviewer_demo@cvbuilder.local", "Reviewer Demo", hashed, "reviewer"),
-        ("editor_demo", "editor_demo@cvbuilder.local", "Editor Demo", hashed, "cv_editor"),
-        ("manager_demo", "manager_demo@cvbuilder.local", "Delivery Manager Demo", hashed, "delivery_manager"),
-        ("user_demo", "user_demo@cvbuilder.local", "User Demo", hashed, "user"),
+        ("venkata.janga", "venkata.janga@cvbuilder.local", "Venkata Janga", hashed, "admin"),
+        ("aarthy.s", "aarthy.s@cvbuilder.local", "Aarthy S", hashed, "reviewer"),
+        ("madhan.k", "madhan.k@cvbuilder.local", "Madhan K", hashed, "cv_editor"),
+        ("priya.r", "priya.r@cvbuilder.local", "Priya R", hashed, "delivery_manager"),
+        ("kiran.p", "kiran.p@cvbuilder.local", "Kiran P", hashed, "user"),
     ]
 
     try:
@@ -100,7 +100,7 @@ def seed_users() -> None:
 
         print("Auth users seeded successfully.")
         print(f"total_users={total}")
-        print("demo_password=<configured via SEED_DEMO_PASSWORD>")
+        print("seed_password=<configured via SEED_AUTH_PASSWORD>")
         for row in rows:
             print(f"{row['username']} | {row['role']} | active={row['is_active']}")
 

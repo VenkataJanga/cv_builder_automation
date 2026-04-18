@@ -4,10 +4,11 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from src.application.services.conversation_service import ConversationService
+from src.application.services.preview_service import PreviewService
 from src.application.services.speech_service import SpeechService
 from src.application.services.audio_cv_service import AudioCVService
+from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.core.config.settings import settings
-from src.domain.cv.services.merge_cv import MergeCVService
 from src.domain.cv.enums import SourceType
 from src.core.constants import MAX_AUDIO_FILE_SIZE_MB
 from src.core.logging.logger import get_logger
@@ -19,8 +20,30 @@ router = APIRouter(prefix="/speech", tags=["speech"], dependencies=[Depends(get_
 
 speech_service = SpeechService()
 conversation_service = ConversationService()
-merge_service = MergeCVService()  # Keep for legacy cv_data backward compatibility
 audio_cv_service = AudioCVService()  # Phase 3: Canonical schema pipeline
+preview_service = PreviewService()
+transaction_logging_service = get_transaction_logging_service()
+
+
+def _log_speech_event(
+    operation: str,
+    status: str,
+    session_id: str | None = None,
+    source_channel: str | None = None,
+    http_status: int | None = None,
+    error_message: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    transaction_logging_service.log_transaction(
+        module_name="speech",
+        operation=operation,
+        status=status,
+        session_id=session_id,
+        source_channel=source_channel,
+        http_status=http_status,
+        error_message=error_message,
+        payload=payload,
+    )
 
 
 def _ensure_file_size_limit(file_bytes: bytes) -> None:
@@ -41,6 +64,22 @@ def _merge_legacy_cv_data(existing: dict, incoming: dict) -> dict:
         else:
             base[key] = value
     return base
+
+
+def _build_preview_from_canonical(canonical_cv: dict) -> dict:
+    """Build formatter-compatible preview data from canonical CV.
+
+    This keeps legacy response compatibility without trusting a second extraction
+    pipeline to produce display data.
+    """
+    if not canonical_cv:
+        return {}
+
+    try:
+        return preview_service.build_preview_from_canonical(canonical_cv)
+    except Exception:
+        logger.exception("Failed to build preview from canonical CV")
+        return {}
 
 def _log_canonical_preview_details(session_data):
     canonical_cv = session_data.get("canonical_cv", {}) or {}
@@ -80,7 +119,19 @@ async def transcribe_audio(
     file_path = os.path.join(settings.LOCAL_STORAGE_PATH, f"{uuid4()}_{file.filename}")
 
     file_content = await file.read()
-    _ensure_file_size_limit(file_content)
+    try:
+        _ensure_file_size_limit(file_content)
+    except HTTPException as exc:
+        _log_speech_event(
+            operation="audio_upload_transcribe",
+            status="failed",
+            session_id=session_id,
+            source_channel="audio_upload",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+            payload={"filename": file.filename, "size_bytes": len(file_content)},
+        )
+        raise
 
     with open(file_path, "wb") as f:
         f.write(file_content)
@@ -91,6 +142,15 @@ async def transcribe_audio(
         enhanced_transcript = transcription_result["enhanced_transcript"]
     except Exception as exc:
         logger.exception("Speech transcription failed")
+        _log_speech_event(
+            operation="audio_upload_transcribe",
+            status="failed",
+            session_id=session_id,
+            source_channel="audio_upload",
+            http_status=502,
+            error_message=str(exc),
+            payload={"filename": file.filename},
+        )
         raise HTTPException(status_code=502, detail=f"Audio transcription failed: {str(exc)}")
     finally:
         # Audio upload is temporary input; cleanup prevents storage bloat over time.
@@ -104,6 +164,14 @@ async def transcribe_audio(
     if session_id:
         session = conversation_service.get_session(session_id)
         if "error" in session:
+            _log_speech_event(
+                operation="audio_upload_transcribe",
+                status="failed",
+                session_id=session_id,
+                source_channel="audio_upload",
+                http_status=400,
+                error_message="Invalid session_id",
+            )
             return {"error": "Invalid session_id"}
     else:
         new_session = conversation_service.start_session()
@@ -132,23 +200,38 @@ async def transcribe_audio(
     logger.info(f"  - Candidate name: {session['canonical_cv'].get('candidate', {}).get('fullName', 'NOT SET')}")
     _log_canonical_preview_details(session)
     
-    # Backward compatibility: Keep legacy cv_data shape if extracted data is provided.
-    extracted_cv_data = transcription_result.get("extracted_cv_data", {}) or {}
-    session["cv_data"] = _merge_legacy_cv_data(session.get("cv_data", {}), extracted_cv_data)
+    # Backward compatibility: derive cv_data from canonical rather than trusting
+    # a separate legacy extraction pipeline.
+    preview_data = _build_preview_from_canonical(audio_result["canonical_cv"])
+    session["cv_data"] = preview_data
     
     conversation_service.save_session(session_id, session)
     logger.info("Session saved to storage")
     logger.info("=" * 80)
+    _log_speech_event(
+        operation="audio_upload_transcribe",
+        status="success",
+        session_id=session_id,
+        source_channel="audio_upload",
+        http_status=200,
+        payload={
+            "can_save": audio_result.get("can_save"),
+            "can_export": audio_result.get("can_export"),
+            "filename": file.filename,
+        },
+    )
 
     # Step 4: Return complete result
     return {
         **transcription_result,
         "session_id": session_id,
+        "preview": preview_data,
         "canonical_cv": audio_result["canonical_cv"],
         "validation": audio_result["validation"],
         "can_save": audio_result["can_save"],
         "can_export": audio_result["can_export"],
-        "cv_data": session["cv_data"],  # Backward compatibility
+        "audio_quality_warning": audio_result.get("audio_quality_warning"),
+        "cv_data": preview_data,  # Backward compatibility, derived from canonical
     }
 
 
@@ -173,12 +256,28 @@ def correct_transcript(
         enhanced_transcript = correction_result["enhanced_transcript"]
     except Exception as exc:
         logger.exception("Transcript correction failed")
+        _log_speech_event(
+            operation="start_recording_correct_transcript",
+            status="failed",
+            session_id=session_id,
+            source_channel="start_recording",
+            http_status=502,
+            error_message=str(exc),
+        )
         raise HTTPException(status_code=502, detail=f"Transcript correction failed: {str(exc)}")
 
     # Handle session
     if session_id:
         session = conversation_service.get_session(session_id)
         if "error" in session:
+            _log_speech_event(
+                operation="start_recording_correct_transcript",
+                status="failed",
+                session_id=session_id,
+                source_channel="start_recording",
+                http_status=400,
+                error_message="Invalid session_id",
+            )
             return {"error": "Invalid session_id"}
     else:
         new_session = conversation_service.start_session()
@@ -207,21 +306,35 @@ def correct_transcript(
     logger.info(f"  - Candidate name: {session['canonical_cv'].get('candidate', {}).get('fullName', 'NOT SET')}")
     _log_canonical_preview_details(session)
     
-    # Backward compatibility: Keep legacy cv_data shape if extracted data is provided.
-    extracted_cv_data = correction_result.get("extracted_cv_data", {}) or {}
-    session["cv_data"] = _merge_legacy_cv_data(session.get("cv_data", {}), extracted_cv_data)
+    # Backward compatibility: derive cv_data from canonical rather than trusting
+    # a separate legacy extraction pipeline.
+    preview_data = _build_preview_from_canonical(audio_result["canonical_cv"])
+    session["cv_data"] = preview_data
     
     conversation_service.save_session(session_id, session)
     logger.info("Session saved to storage")
     logger.info("=" * 80)
+    _log_speech_event(
+        operation="start_recording_correct_transcript",
+        status="success",
+        session_id=session_id,
+        source_channel="start_recording",
+        http_status=200,
+        payload={
+            "can_save": audio_result.get("can_save"),
+            "can_export": audio_result.get("can_export"),
+        },
+    )
 
     # Step 4: Return complete result
     return {
         **correction_result,
         "session_id": session_id,
+        "preview": preview_data,
         "canonical_cv": audio_result["canonical_cv"],
         "validation": audio_result["validation"],
         "can_save": audio_result["can_save"],
         "can_export": audio_result["can_export"],
-        "cv_data": session["cv_data"],  # Backward compatibility
+        "audio_quality_warning": audio_result.get("audio_quality_warning"),
+        "cv_data": preview_data,  # Backward compatibility, derived from canonical
     }

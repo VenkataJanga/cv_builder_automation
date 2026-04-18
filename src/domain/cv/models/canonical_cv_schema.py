@@ -8,7 +8,7 @@ Schema Version: 1.1
 Last Updated: 2026-04-12
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import AliasChoices, BaseModel, Field, ConfigDict
 from src.domain.cv.enums import SourceType
@@ -320,6 +320,20 @@ class CanonicalCVSchema(BaseModel):
     # Metadata and Audit
     attachmentsMetadata: AttachmentsMetadataModel = Field(default_factory=AttachmentsMetadataModel, description="File metadata")
     audit: AuditModel = Field(default_factory=AuditModel, description="Audit trail")
+
+    # Data-loss prevention extensions
+    unmappedData: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Source-scoped unmapped details that could not be mapped to canonical fields",
+    )
+    sourceSnapshots: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Raw/source snapshots captured during extraction and normalization",
+    )
+    mappingWarnings: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Warnings generated while mapping source data into canonical fields",
+    )
     
     model_config = ConfigDict(
         populate_by_name=True,

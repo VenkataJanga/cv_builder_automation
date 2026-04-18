@@ -147,6 +147,96 @@ class CVBuilderService:
         cv_data["target_role"] = role_answer.strip()
         return cv_data
 
+    def merge_extracted_fields(
+        self,
+        cv_data: Dict[str, Any],
+        extracted_fields: Dict[str, Any],
+        merge_strategy: str = "questionnaire_wins",
+    ) -> Dict[str, Any]:
+        """
+        Merge LLM-extracted fields into CV data safely.
+        
+        Args:
+            cv_data: Current CV data from questionnaire
+            extracted_fields: Fields extracted by LLM
+            merge_strategy: How to merge
+                - "questionnaire_wins": Keep questionnaire values if present
+                - "extracted_wins": Use extracted values
+                
+        Returns:
+            Merged CV data dict
+            
+        Notes:
+            - Questionnaire-confirmed values always take priority
+            - Extracted fields fill gaps
+            - List fields (experience, projects, education) append non-duplicates
+        """
+        if not extracted_fields:
+            return cv_data
+
+        merged = cv_data.copy()
+
+        # Merge personal details dict
+        if "personal_details" in extracted_fields:
+            existing_personal = merged.get("personal_details", {})
+            extracted_personal = extracted_fields["personal_details"]
+            for key, extracted_val in extracted_personal.items():
+                if extracted_val is None or extracted_val == "":
+                    continue
+                existing_val = existing_personal.get(key)
+                if merge_strategy == "questionnaire_wins":
+                    if not existing_val or existing_val == "":
+                        existing_personal[key] = extracted_val
+                else:
+                    existing_personal[key] = extracted_val
+            merged["personal_details"] = existing_personal
+
+        # Merge summary dict
+        if "summary" in extracted_fields:
+            existing_summary = merged.get("summary", {})
+            extracted_summary = extracted_fields["summary"]
+            for key, extracted_val in extracted_summary.items():
+                if extracted_val is None or extracted_val == "":
+                    continue
+                existing_val = existing_summary.get(key)
+                if merge_strategy == "questionnaire_wins":
+                    if not existing_val or existing_val == "":
+                        existing_summary[key] = extracted_val
+                else:
+                    existing_summary[key] = extracted_val
+            merged["summary"] = existing_summary
+
+        # Merge skills dict
+        if "skills" in extracted_fields:
+            existing_skills = merged.get("skills", {})
+            extracted_skills = extracted_fields["skills"]
+            for key, extracted_list in extracted_skills.items():
+                if not isinstance(extracted_list, list) or not extracted_list:
+                    continue
+                existing_list = existing_skills.get(key, [])
+                if not existing_list and merge_strategy == "questionnaire_wins":
+                    # Only use extracted if questionnaire is empty
+                    existing_skills[key] = extracted_list
+                elif merge_strategy == "extracted_wins":
+                    existing_skills[key] = extracted_list
+            merged["skills"] = existing_skills
+
+        # Merge list fields (append if questionnaire is empty)
+        for list_field in ["work_experience", "project_experience", "education", "certifications"]:
+            if list_field in extracted_fields:
+                extracted_list = extracted_fields[list_field]
+                if isinstance(extracted_list, list) and extracted_list:
+                    existing_list = merged.get(list_field, [])
+                    if not existing_list and merge_strategy == "questionnaire_wins":
+                        merged[list_field] = extracted_list
+                    elif merge_strategy == "extracted_wins":
+                        merged[list_field] = extracted_list
+                    # "merge" strategy: append non-duplicates (simple append for now)
+                    elif not existing_list:
+                        merged[list_field] = extracted_list
+
+        return merged
+
     @staticmethod
     def _has_minimum_required_fields(cv_data: Dict[str, Any]) -> bool:
         personal = cv_data.get("personal_details", {})

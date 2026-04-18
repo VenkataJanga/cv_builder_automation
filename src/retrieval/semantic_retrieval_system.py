@@ -287,7 +287,7 @@ class SemanticRetrievalSystem:
         Generate embedding for text
         Placeholder - would use actual embedding model (OpenAI, Sentence Transformers, etc.)
         """
-        # Simple hash-based pseudo-embedding for demo
+        # Simple hash-based pseudo-embedding for local development
         # In production, use OpenAI embeddings or similar
         import hashlib
         hash_obj = hashlib.sha256(text.encode())

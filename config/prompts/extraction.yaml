@@ -1,0 +1,199 @@
+normalization_and_extraction:
+  description: "Normalize user input and extract structured CV fields"
+  
+  system_message: |
+    You are a CV normalization and extraction expert. Your job is to:
+    1. Normalize free-form conversational text into professional CV language
+    2. Fix grammar and spelling without changing meaning
+    3. Extract structured information into the provided schema
+    4. Be conservative - only extract information explicitly stated
+    5. Return valid JSON only, no explanations
+    
+  user_prompt_template: |
+    Normalize this CV-related text and extract fields.
+    
+    Input text:
+    {raw_text}
+    
+    Context (optional):
+    {context}
+    
+    Return a JSON object with this structure (leave fields empty/null if not found):
+    {{
+      "normalized_text": "Professional version of the input",
+      "extracted_fields": {{
+        "personal_details": {{
+          "full_name": "string or null",
+          "email": "string or null",
+          "phone": "string or null",
+          "location": "string or null",
+          "employee_id": "string or null",
+          "current_title": "string or null",
+          "current_organization": "string or null",
+          "total_experience": "number (years) or null"
+        }},
+        "summary": {{
+          "professional_summary": "string or null",
+          "target_role": "string or null",
+          "key_highlights": ["list of 3-5 highlights or empty"]
+        }},
+        "skills": {{
+          "primary_skills": ["list of 5-10 skills or empty"],
+          "secondary_skills": ["list of skills or empty"],
+          "technical_skills": ["list of programming/technical skills or empty"],
+          "tools_and_platforms": ["list of tools or empty"]
+        }},
+        "work_experience": [
+          {{
+            "organization": "string",
+            "job_title": "string",
+            "start_date": "YYYY-MM or null",
+            "end_date": "YYYY-MM or 'Present'",
+            "duration_months": "number or null",
+            "key_responsibilities": ["list of achievements"],
+            "summary": "brief summary"
+          }}
+        ],
+        "project_experience": [
+          {{
+            "project_name": "string",
+            "project_description": "string",
+            "role": "string",
+            "technologies": ["list"],
+            "duration_months": "number or null",
+            "key_achievements": ["list"]
+          }}
+        ],
+        "education": [
+          {{
+            "institution": "string",
+            "degree": "string",
+            "field_of_study": "string",
+            "year_of_passing": "YYYY or null",
+            "grade": "string or null"
+          }}
+        ],
+        "certifications": [
+          {{
+            "certification_name": "string",
+            "issuing_organization": "string",
+            "year_obtained": "YYYY or null"
+          }}
+        ]
+      }},
+      "confidence": {{
+        "overall": 0.0 to 1.0,
+        "personal_details": 0.0 to 1.0,
+        "summary": 0.0 to 1.0,
+        "skills": 0.0 to 1.0,
+        "experience": 0.0 to 1.0,
+        "education": 0.0 to 1.0
+      }},
+      "warnings": [
+        "list of any concerns or assumptions made"
+      ]
+    }}
+    
+    Rules:
+    - Preserve all original information
+    - Only extract what is explicitly stated
+    - Do not hallucinate missing data
+    - If unsure about a field, leave it null
+    - For dates, extract what's available (year alone is OK)
+    - Confidence scores reflect certainty of extraction, not quality of content
+    - List any assumptions in warnings field
+
+  parameters:
+    model: "gpt-4-turbo"
+    temperature: 0.2
+    max_tokens: 4000
+    response_format: "json_object"
+
+transcript_extraction:
+  description: "Extract CV structure from voice transcript"
+  
+  system_message: |
+    You are a CV extraction specialist for voice transcripts.
+    Extract structured CV information from conversational speech.
+    The person is describing their professional background.
+    
+  user_prompt_template: |
+    Extract CV information from this voice transcript.
+    
+    Transcript:
+    {transcript}
+    
+    Return JSON with this structure:
+    {{
+      "normalized_text": "Professional version of the transcript",
+      "extracted_fields": {{
+        "personal_details": {{
+          "full_name": "string or null",
+          "email": "string or null",
+          "phone": "string or null",
+          "current_title": "string or null",
+          "current_organization": "string or null",
+          "total_experience": "number (years) or null"
+        }},
+        "summary": {{
+          "professional_summary": "2-3 sentence summary or null"
+        }},
+        "skills": {{
+          "primary_skills": ["extracted skills"],
+          "technical_skills": ["programming languages, frameworks, tools"]
+        }},
+        "work_experience": [
+          {{
+            "organization": "company name",
+            "job_title": "position title",
+            "key_responsibilities": ["responsibilities mentioned"]
+          }}
+        ],
+        "project_experience": [
+          {{
+            "project_name": "project name",
+            "project_description": "what was built/done",
+            "technologies": ["tech stack used"]
+          }}
+        ],
+        "education": [
+          {{
+            "institution": "school/university",
+            "degree": "degree type",
+            "field_of_study": "major/concentration"
+          }}
+        ]
+      }},
+      "confidence": {{
+        "overall": 0.0 to 1.0
+      }},
+      "warnings": ["any issues or uncertainties"]
+    }}
+    
+  parameters:
+    model: "gpt-4-turbo"
+    temperature: 0.1
+    max_tokens: 3000
+    response_format: "json_object"
+
+summary_enhancement:
+  description: "Enhance and normalize professional summary"
+  
+  user_prompt_template: |
+    Transform this professional summary into polished CV language.
+    Keep all information but make it more professional and impactful.
+    
+    Input: {summary}
+    
+    Context role: {role}
+    
+    Return JSON:
+    {{
+      "normalized_text": "enhanced summary",
+      "key_points": ["extracted key strengths"],
+      "warnings": []
+    }}
+    
+  parameters:
+    temperature: 0.3
+    max_tokens: 500

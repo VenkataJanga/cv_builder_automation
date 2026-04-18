@@ -3,8 +3,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 from io import BytesIO
+from pathlib import Path
+import logging
 
 from src.application.services.conversation_service import ConversationService, get_session_persistence_service
+from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.application.services.preview_service import PreviewService
 from src.application.services.export_service import ExportService
 from src.infrastructure.rendering.template_engine import TemplateEngine
@@ -21,12 +24,36 @@ export_service = ExportService()
 template_engine = TemplateEngine()
 pdf_renderer = PdfRenderer()
 session_persistence_service = get_session_persistence_service()
+transaction_logging_service = get_transaction_logging_service()
+logger = logging.getLogger(__name__)
 
 
 class ExportRequest(BaseModel):
     session_id: Optional[str] = None
     cv_data: Optional[dict] = None
     template_style: Optional[str] = "standard"  # Options: "standard", "modern", "hybrid"
+
+
+def _log_export_event(
+    operation: str,
+    status: str,
+    session_id: str | None = None,
+    export_format: str | None = None,
+    http_status: int | None = None,
+    error_message: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    transaction_logging_service.log_transaction(
+        module_name="export",
+        operation=operation,
+        status=status,
+        session_id=session_id,
+        source_channel="export",
+        export_format=export_format,
+        http_status=http_status,
+        error_message=error_message,
+        payload=payload,
+    )
 
 
 def _validate_export_eligibility(session: dict, session_id: str):
@@ -80,6 +107,34 @@ def _mark_export_completed(session_id: str, export_format: str) -> None:
         pass
 
 
+def _cleanup_export_source_files(session: dict, session_id: str) -> None:
+    """Best-effort deletion of stored upload source files after successful export."""
+    try:
+        metadata = session.get("document_metadata") or {}
+        saved_path = metadata.get("saved_path")
+        if not saved_path:
+            return
+
+        path = Path(str(saved_path)).resolve()
+        uploads_root = Path("data/storage/uploads").resolve()
+
+        # Safety guard: only delete files under the uploads folder.
+        if uploads_root not in path.parents:
+            logger.warning(
+                "Skipping source cleanup for session %s because path is outside uploads root: %s",
+                session_id,
+                path,
+            )
+            return
+
+        if path.exists() and path.is_file():
+            path.unlink()
+            logger.info("Deleted upload source file after export for session %s: %s", session_id, path)
+    except Exception as exc:
+        # Export response should not fail if cleanup fails.
+        logger.warning("Post-export source cleanup failed for session %s: %s", session_id, exc)
+
+
 # Legacy GET endpoints for backward compatibility
 @router.get("/docx/{session_id}")
 def export_docx_get(session_id: str, template_style: str = "standard"):
@@ -89,59 +144,195 @@ def export_docx_get(session_id: str, template_style: str = "standard"):
     Query Parameters:
     - template_style: Template style to use ("standard", "modern", or "hybrid")
     """
-    session = conversation_service.get_session(session_id)
-    if "error" in session:
-        return session
+    try:
+        session = conversation_service.get_session(session_id)
+        if "error" in session:
+            _log_export_event(
+                operation="export_docx_get",
+                status="failed",
+                session_id=session_id,
+                export_format="docx",
+                http_status=404,
+                error_message="Session not found",
+            )
+            return session
 
-    # Validate export eligibility (human-in-the-loop gate)
-    _validate_export_eligibility(session, session_id)
+        # Validate export eligibility (human-in-the-loop gate)
+        _validate_export_eligibility(session, session_id)
 
-    # Phase 4: Read from canonical_cv only
-    canonical_cv = session.get("canonical_cv")
-    if not canonical_cv:
-        raise HTTPException(
-            status_code=400,
-            detail="No canonical CV data found for export"
+        # Phase 4: Read from canonical_cv only
+        canonical_cv = session.get("canonical_cv")
+        if not canonical_cv:
+            raise HTTPException(
+                status_code=400,
+                detail="No canonical CV data found for export"
+            )
+
+        # Use DOCX export service to preserve structured data and formatted sections
+        docx_bytes = export_service.export_docx(canonical_cv, template_style=template_style)
+        _mark_export_completed(session_id, "docx")
+        _cleanup_export_source_files(session, session_id)
+        _log_export_event(
+            operation="export_docx_get",
+            status="success",
+            session_id=session_id,
+            export_format="docx",
+            http_status=200,
         )
 
-    # Use DOCX export service to preserve structured data and formatted sections
-    docx_bytes = export_service.export_docx(canonical_cv, template_style=template_style)
-    _mark_export_completed(session_id, "docx")
-
-    return StreamingResponse(
-        BytesIO(docx_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename=cv_{session_id}.docx"}
-    )
+        return StreamingResponse(
+            BytesIO(docx_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=cv_{session_id}.docx"}
+        )
+    except HTTPException as exc:
+        _log_export_event(
+            operation="export_docx_get",
+            status="failed",
+            session_id=session_id,
+            export_format="docx",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
+    except Exception as exc:
+        _log_export_event(
+            operation="export_docx_get",
+            status="failed",
+            session_id=session_id,
+            export_format="docx",
+            http_status=500,
+            error_message=str(exc),
+        )
+        raise
 
 
 @router.get("/pdf/{session_id}")
 def export_pdf_get(session_id: str):
     """Phase 4: Export CV to PDF format from canonical_cv"""
-    session = conversation_service.get_session(session_id)
-    if "error" in session:
-        return session
+    try:
+        session = conversation_service.get_session(session_id)
+        if "error" in session:
+            _log_export_event(
+                operation="export_pdf_get",
+                status="failed",
+                session_id=session_id,
+                export_format="pdf",
+                http_status=404,
+                error_message="Session not found",
+            )
+            return session
 
-    # Validate export eligibility (human-in-the-loop gate)
-    _validate_export_eligibility(session, session_id)
+        # Validate export eligibility (human-in-the-loop gate)
+        _validate_export_eligibility(session, session_id)
 
-    # Phase 4: Read from canonical_cv only
-    canonical_cv = session.get("canonical_cv")
-    if not canonical_cv:
-        raise HTTPException(
-            status_code=400,
-            detail="No canonical CV data found for export"
+        # Phase 4: Read from canonical_cv only
+        canonical_cv = session.get("canonical_cv")
+        if not canonical_cv:
+            raise HTTPException(
+                status_code=400,
+                detail="No canonical CV data found for export"
+            )
+
+        # Use export service to handle PDF generation
+        pdf_bytes = export_service.export_pdf(canonical_cv)
+        _mark_export_completed(session_id, "pdf")
+        _cleanup_export_source_files(session, session_id)
+        _log_export_event(
+            operation="export_pdf_get",
+            status="success",
+            session_id=session_id,
+            export_format="pdf",
+            http_status=200,
         )
 
-    # Use export service to handle PDF generation
-    pdf_bytes = export_service.export_pdf(canonical_cv)
-    _mark_export_completed(session_id, "pdf")
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=cv_{session_id}.pdf"}
+        )
+    except HTTPException as exc:
+        _log_export_event(
+            operation="export_pdf_get",
+            status="failed",
+            session_id=session_id,
+            export_format="pdf",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
+    except Exception as exc:
+        _log_export_event(
+            operation="export_pdf_get",
+            status="failed",
+            session_id=session_id,
+            export_format="pdf",
+            http_status=500,
+            error_message=str(exc),
+        )
+        raise
 
-    return StreamingResponse(
-        BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=cv_{session_id}.pdf"}
-    )
+
+@router.get("/doc/{session_id}")
+def export_doc_get(session_id: str, template_style: str = "standard"):
+    """Export CV to DOC-compatible stream backed by DOCX generation."""
+    try:
+        session = conversation_service.get_session(session_id)
+        if "error" in session:
+            _log_export_event(
+                operation="export_doc_get",
+                status="failed",
+                session_id=session_id,
+                export_format="doc",
+                http_status=404,
+                error_message="Session not found",
+            )
+            return session
+
+        _validate_export_eligibility(session, session_id)
+        canonical_cv = session.get("canonical_cv")
+        if not canonical_cv:
+            raise HTTPException(
+                status_code=400,
+                detail="No canonical CV data found for export"
+            )
+
+        docx_bytes = export_service.export_docx(canonical_cv, template_style=template_style)
+        _mark_export_completed(session_id, "doc")
+        _cleanup_export_source_files(session, session_id)
+        _log_export_event(
+            operation="export_doc_get",
+            status="success",
+            session_id=session_id,
+            export_format="doc",
+            http_status=200,
+        )
+
+        return StreamingResponse(
+            BytesIO(docx_bytes),
+            media_type="application/msword",
+            headers={"Content-Disposition": f"attachment; filename=cv_{session_id}.doc"}
+        )
+    except HTTPException as exc:
+        _log_export_event(
+            operation="export_doc_get",
+            status="failed",
+            session_id=session_id,
+            export_format="doc",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
+    except Exception as exc:
+        _log_export_event(
+            operation="export_doc_get",
+            status="failed",
+            session_id=session_id,
+            export_format="doc",
+            http_status=500,
+            error_message=str(exc),
+        )
+        raise
 
 
 # New POST endpoints to match frontend expectations
@@ -161,34 +352,151 @@ def export_docx_post(request: ExportRequest):
     
     Note: cv_data parameter removed in Phase 4 - all exports must come from session canonical_cv
     """
-    if not request.session_id:
-        return {"error": "session_id is required for export"}
-    
-    session = conversation_service.get_session(request.session_id)
-    if "error" in session:
-        return session
-    
-    # Validate export eligibility (human-in-the-loop gate)
-    _validate_export_eligibility(session, request.session_id)
-    
-    # Phase 4: Read from canonical_cv only
-    canonical_cv = session.get("canonical_cv")
-    if not canonical_cv:
-        raise HTTPException(
-            status_code=400,
-            detail="No canonical CV data found for export"
+    try:
+        if not request.session_id:
+            _log_export_event(
+                operation="export_docx_post",
+                status="failed",
+                export_format="docx",
+                http_status=400,
+                error_message="session_id is required for export",
+            )
+            return {"error": "session_id is required for export"}
+        
+        session = conversation_service.get_session(request.session_id)
+        if "error" in session:
+            _log_export_event(
+                operation="export_docx_post",
+                status="failed",
+                session_id=request.session_id,
+                export_format="docx",
+                http_status=404,
+                error_message="Session not found",
+            )
+            return session
+        
+        # Validate export eligibility (human-in-the-loop gate)
+        _validate_export_eligibility(session, request.session_id)
+        
+        # Phase 4: Read from canonical_cv only
+        canonical_cv = session.get("canonical_cv")
+        if not canonical_cv:
+            raise HTTPException(
+                status_code=400,
+                detail="No canonical CV data found for export"
+            )
+
+        # Use DOCX export service to preserve structured data and formatted sections
+        template_style = request.template_style or "standard"
+        docx_bytes = export_service.export_docx(canonical_cv, template_style=template_style)
+        _mark_export_completed(request.session_id, "docx")
+        _cleanup_export_source_files(session, request.session_id)
+        _log_export_event(
+            operation="export_docx_post",
+            status="success",
+            session_id=request.session_id,
+            export_format="docx",
+            http_status=200,
         )
 
-    # Use DOCX export service to preserve structured data and formatted sections
-    template_style = request.template_style or "standard"
-    docx_bytes = export_service.export_docx(canonical_cv, template_style=template_style)
-    _mark_export_completed(request.session_id, "docx")
+        return StreamingResponse(
+            BytesIO(docx_bytes),
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={"Content-Disposition": f"attachment; filename=cv_{request.session_id}.docx"}
+        )
+    except HTTPException as exc:
+        _log_export_event(
+            operation="export_docx_post",
+            status="failed",
+            session_id=request.session_id,
+            export_format="docx",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
+    except Exception as exc:
+        _log_export_event(
+            operation="export_docx_post",
+            status="failed",
+            session_id=request.session_id,
+            export_format="docx",
+            http_status=500,
+            error_message=str(exc),
+        )
+        raise
 
-    return StreamingResponse(
-        BytesIO(docx_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={"Content-Disposition": f"attachment; filename=cv_{request.session_id}.docx"}
-    )
+
+@router.post("/doc")
+def export_doc_post(request: ExportRequest):
+    """Export CV to DOC-compatible stream backed by DOCX generation (POST endpoint)."""
+    try:
+        if not request.session_id:
+            _log_export_event(
+                operation="export_doc_post",
+                status="failed",
+                export_format="doc",
+                http_status=400,
+                error_message="session_id is required for export",
+            )
+            return {"error": "session_id is required for export"}
+
+        session = conversation_service.get_session(request.session_id)
+        if "error" in session:
+            _log_export_event(
+                operation="export_doc_post",
+                status="failed",
+                session_id=request.session_id,
+                export_format="doc",
+                http_status=404,
+                error_message="Session not found",
+            )
+            return session
+
+        _validate_export_eligibility(session, request.session_id)
+        canonical_cv = session.get("canonical_cv")
+        if not canonical_cv:
+            raise HTTPException(
+                status_code=400,
+                detail="No canonical CV data found for export"
+            )
+
+        template_style = request.template_style or "standard"
+        docx_bytes = export_service.export_docx(canonical_cv, template_style=template_style)
+        _mark_export_completed(request.session_id, "doc")
+        _cleanup_export_source_files(session, request.session_id)
+        _log_export_event(
+            operation="export_doc_post",
+            status="success",
+            session_id=request.session_id,
+            export_format="doc",
+            http_status=200,
+        )
+
+        return StreamingResponse(
+            BytesIO(docx_bytes),
+            media_type="application/msword",
+            headers={"Content-Disposition": f"attachment; filename=cv_{request.session_id}.doc"}
+        )
+    except HTTPException as exc:
+        _log_export_event(
+            operation="export_doc_post",
+            status="failed",
+            session_id=request.session_id,
+            export_format="doc",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
+    except Exception as exc:
+        _log_export_event(
+            operation="export_doc_post",
+            status="failed",
+            session_id=request.session_id,
+            export_format="doc",
+            http_status=500,
+            error_message=str(exc),
+        )
+        raise
 
 
 @router.post("/pdf")
@@ -198,30 +506,74 @@ def export_pdf_post(request: ExportRequest):
     
     Note: cv_data parameter removed in Phase 4 - all exports must come from session canonical_cv
     """
-    if not request.session_id:
-        return {"error": "session_id is required for export"}
-    
-    session = conversation_service.get_session(request.session_id)
-    if "error" in session:
-        return session
-    
-    # Validate export eligibility (human-in-the-loop gate)
-    _validate_export_eligibility(session, request.session_id)
-    
-    # Phase 4: Read from canonical_cv only
-    canonical_cv = session.get("canonical_cv")
-    if not canonical_cv:
-        raise HTTPException(
-            status_code=400,
-            detail="No canonical CV data found for export"
+    try:
+        if not request.session_id:
+            _log_export_event(
+                operation="export_pdf_post",
+                status="failed",
+                export_format="pdf",
+                http_status=400,
+                error_message="session_id is required for export",
+            )
+            return {"error": "session_id is required for export"}
+        
+        session = conversation_service.get_session(request.session_id)
+        if "error" in session:
+            _log_export_event(
+                operation="export_pdf_post",
+                status="failed",
+                session_id=request.session_id,
+                export_format="pdf",
+                http_status=404,
+                error_message="Session not found",
+            )
+            return session
+        
+        # Validate export eligibility (human-in-the-loop gate)
+        _validate_export_eligibility(session, request.session_id)
+        
+        # Phase 4: Read from canonical_cv only
+        canonical_cv = session.get("canonical_cv")
+        if not canonical_cv:
+            raise HTTPException(
+                status_code=400,
+                detail="No canonical CV data found for export"
+            )
+
+        # Use export service to handle PDF generation
+        pdf_bytes = export_service.export_pdf(canonical_cv)
+        _mark_export_completed(request.session_id, "pdf")
+        _cleanup_export_source_files(session, request.session_id)
+        _log_export_event(
+            operation="export_pdf_post",
+            status="success",
+            session_id=request.session_id,
+            export_format="pdf",
+            http_status=200,
         )
 
-    # Use export service to handle PDF generation
-    pdf_bytes = export_service.export_pdf(canonical_cv)
-    _mark_export_completed(request.session_id, "pdf")
-
-    return StreamingResponse(
-        BytesIO(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename=cv_{request.session_id}.pdf"}
-    )
+        return StreamingResponse(
+            BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=cv_{request.session_id}.pdf"}
+        )
+    except HTTPException as exc:
+        _log_export_event(
+            operation="export_pdf_post",
+            status="failed",
+            session_id=request.session_id,
+            export_format="pdf",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
+    except Exception as exc:
+        _log_export_event(
+            operation="export_pdf_post",
+            status="failed",
+            session_id=request.session_id,
+            export_format="pdf",
+            http_status=500,
+            error_message=str(exc),
+        )
+        raise

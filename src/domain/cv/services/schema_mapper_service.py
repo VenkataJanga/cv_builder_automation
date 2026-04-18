@@ -150,21 +150,31 @@ class SchemaMapperService:
                 # Map directly from personal_info structure
                 if personal_info.get("name"):
                     candidate["fullName"] = personal_info["name"]
+                if personal_info.get("current_designation"):
+                    candidate["currentDesignation"] = personal_info["current_designation"]
                 if personal_info.get("email"):
                     candidate["email"] = personal_info["email"]
                 if personal_info.get("phone"):
                     candidate["phoneNumber"] = personal_info["phone"]
+                if personal_info.get("portal_id"):
+                    candidate["portalId"] = str(personal_info["portal_id"])
+                if personal_info.get("current_grade"):
+                    # Compatibility field used by preview/rendering; canonical model ignores unknown keys safely.
+                    candidate["currentGrade"] = str(personal_info["current_grade"])
                 if personal_info.get("linkedin"):
                     canonical_cv.setdefault("personalDetails", {})["linkedinUrl"] = personal_info["linkedin"]
                 if personal_info.get("github"):
                     canonical_cv.setdefault("personalDetails", {})["githubUrl"] = personal_info["github"]
                 if personal_info.get("location") and isinstance(personal_info["location"], dict):
                     loc = personal_info["location"]
+                    city = loc.get("city") or ""
+                    state = loc.get("state") or ""
+                    country = loc.get("country") or ""
                     candidate["currentLocation"] = {
-                        "city": loc.get("city", ""),
-                        "state": loc.get("state", ""),
-                        "country": loc.get("country", ""),
-                        "fullAddress": f"{loc.get('city', '')}, {loc.get('state', '')}, {loc.get('country', '')}".strip(", ")
+                        "city": city,
+                        "state": state,
+                        "country": country,
+                        "fullAddress": ", ".join([part for part in [city, state, country] if part])
                     }
             
             # Basic identity fields (fallback to field mapping)
@@ -290,7 +300,7 @@ class SchemaMapperService:
                             "designation": job.get("title", ""),
                             "employmentStartDate": job.get("startDate", ""),
                             "employmentEndDate": job.get("endDate", ""),
-                            "isCurrentCompany": job.get("endDate", "").lower() in ["present", "current"],
+                            "isCurrentCompany": str(job.get("endDate", "") or "").lower() in ["present", "current"],
                             "location": "",
                             "responsibilities": job.get("responsibilities", []),
                             "achievements": [],
@@ -308,20 +318,22 @@ class SchemaMapperService:
                 projects = []
                 for proj in source_data["projects"]:
                     if isinstance(proj, dict):
+                        technologies = proj.get("technologies", [])
+                        responsibilities = proj.get("responsibilities", [])
                         project_entry = {
                             "projectName": proj.get("name", ""),
                             "clientName": "",
                             "organization": "",
                             "role": proj.get("role", ""),
-                            "durationFrom": "",
+                            "durationFrom": proj.get("duration", ""),
                             "durationTo": "",
                             "isCurrentProject": False,
                             "projectLocation": "",
                             "projectDescription": proj.get("description", ""),
-                            "responsibilities": [],
-                            "outcomes": [],
-                            "environment": proj.get("technologies", []),
-                            "toolsUsed": [],
+                            "responsibilities": responsibilities if isinstance(responsibilities, list) else [],
+                            "outcomes": proj.get("outcomes", []) if isinstance(proj.get("outcomes", []), list) else [],
+                            "environment": technologies if isinstance(technologies, list) else [],
+                            "toolsUsed": technologies if isinstance(technologies, list) else [],
                             "teamSize": "",
                             "methodology": "",
                             "domain": "",
@@ -451,16 +463,22 @@ class SchemaMapperService:
             education = []
             for item in education_source:
                 if isinstance(item, dict):
+                    raw_gpa = item.get("gpa", "")
                     edu_entry = {
                         "degree": item.get("degree", ""),
-                        "specialization": item.get("specialization", item.get("major", "")),
+                        "specialization": (
+                            item.get("specialization")
+                            or item.get("field")
+                            or item.get("major")
+                            or ""
+                        ),
                         "institution": item.get("institution", item.get("college", item.get("school", ""))),
                         "university": item.get("university", item.get("board", "")),
                         "board": item.get("board", ""),
                         "yearOfPassing": str(item.get("yearOfPassing", item.get("year", ""))),
-                        "percentage": str(item.get("percentage", "")),
-                        "cgpa": str(item.get("cgpa", "")),
-                        "grade": item.get("grade", ""),
+                        "percentage": str(item.get("percentage") or raw_gpa or ""),
+                        "cgpa": str(item.get("cgpa") or ""),
+                        "grade": item.get("grade") or raw_gpa or "",
                         "location": item.get("location", "")
                     }
                     education.append(edu_entry)
@@ -636,7 +654,11 @@ class SchemaMapperService:
             for source_key in mapping.source_paths:
                 # First try flat key
                 if source_key in source_data and source_data[source_key]:
-                    value = source_data[source_key]
+                    candidate_value = source_data[source_key]
+                    # Skip section dictionaries (e.g., source_data['skills']) for list mappings.
+                    if isinstance(candidate_value, dict):
+                        continue
+                    value = candidate_value
                     break
                 
                 # Try nested paths

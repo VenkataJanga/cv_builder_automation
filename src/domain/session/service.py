@@ -34,6 +34,7 @@ class SessionService:
         session_id: Optional[str] = None,
         canonical_cv: Optional[Dict[str, Any]] = None,
         metadata: Optional[SessionMetadata] = None,
+        workflow_state: Optional[Dict[str, Any]] = None,
     ) -> CVSession:
         now = self._utc_now()
         sid = session_id or str(uuid4())
@@ -46,6 +47,7 @@ class SessionService:
             last_updated_at=now,
             expires_at=now + self.default_ttl,
             metadata=metadata or SessionMetadata(),
+            workflow_state=workflow_state or {},
         )
         return self.repository.create_session(session)
 
@@ -119,7 +121,8 @@ class SessionService:
         expected_version: Optional[int] = None,
     ) -> CVSession:
         session = self.get_latest(session_id)
-        source = SessionSourceType.EXPORT_DOCX if export_format.lower() == "docx" else SessionSourceType.EXPORT_PDF
+        normalized_format = (export_format or "").lower()
+        source = SessionSourceType.EXPORT_DOCX if normalized_format in {"doc", "docx"} else SessionSourceType.EXPORT_PDF
         session.mark_exported(source)
         session.expires_at = self._utc_now() + self.exported_retention
         return self.repository.update_session(session, expected_version=expected_version)
@@ -136,6 +139,26 @@ class SessionService:
 
     def delete_session(self, session_id: str) -> None:
         self.repository.delete_session(session_id)
+
+    def save_workflow_state(
+        self,
+        session_id: str,
+        workflow_state: Dict[str, Any],
+        canonical_cv: Optional[Dict[str, Any]] = None,
+        validation_results: Optional[Dict[str, Any]] = None,
+        expected_version: Optional[int] = None,
+        source_type: SessionSourceType = SessionSourceType.MANUAL_EDIT,
+        description: str = "session_save",
+    ) -> CVSession:
+        session = self.get_latest(session_id)
+        if canonical_cv is not None:
+            session.canonical_cv = canonical_cv
+        if validation_results is not None:
+            session.validation_results = validation_results
+        session.workflow_state = workflow_state
+        session.add_source_event(source_type, description=description)
+        session.touch()
+        return self.repository.update_session(session, expected_version=expected_version)
 
     def _to_cv_source_type(self, source_type: SessionSourceType) -> SourceType:
         mapping = {

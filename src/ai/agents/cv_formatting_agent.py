@@ -136,34 +136,60 @@ class CVFormattingAgent:
             if isinstance(value, str):
                 return value.strip()
             if isinstance(value, list):
-                return " ".join(normalize_value(item) for item in value if item is not None)
-            if isinstance(value, dict):
-                return " ".join(
-                    normalize_value(v) for v in value.values() if v is not None
+                return "\n".join(
+                    normalize_value(item) for item in value if item is not None
                 )
+            if isinstance(value, dict):
+                preferred_keys = [
+                    "professional_summary",
+                    "summary",
+                    "experience_summary",
+                    "profile_summary",
+                    "description",
+                    "text",
+                    "content",
+                ]
+                for key in preferred_keys:
+                    if key in value and value.get(key) not in (None, ""):
+                        extracted = normalize_value(value.get(key))
+                        if extracted:
+                            return extracted
+
+                ignored_keys = {
+                    "target_role",
+                    "total_experience_years",
+                    "total_experience_months",
+                    "relevant_experience_years",
+                    "relevant_experience_months",
+                    "years_of_experience",
+                }
+                parts = []
+                for key, item in value.items():
+                    if str(key).lower() in ignored_keys:
+                        continue
+                    extracted = normalize_value(item)
+                    if extracted:
+                        parts.append(extracted)
+                return "\n".join(parts)
             return ""
 
         if isinstance(summary, dict):
-            summary_copy = {k: v for k, v in summary.items() if k != "target_role"}
-            return normalize_value(summary_copy)
+            return normalize_value(summary)
 
         if isinstance(summary, (str, list)):
             return normalize_value(summary)
 
         fallback = cv_data.get("summary")
-        if isinstance(fallback, dict):
-            fallback = {k: v for k, v in fallback.items() if k != "target_role"}
         if isinstance(fallback, (str, list, dict)):
             return normalize_value(fallback)
         return ""
 
     def _format_summary(self, text: str) -> str:
-        text = (text or "").strip()
-        if not text:
-            return ""
-        text = " ".join(text.split())
-        if not text.endswith("."):
-            text += "."
+        text = (text or "").replace("\r\n", "\n")
+        text = re.sub(r"(?m)^\s*[\u2022\u25E6\u25AA\u25CF\u25C6\u25BA\uF076]\s*", "• ", text)
+        text = re.sub(r"(?m)^\s*[-*]\s+", "• ", text)
+        text = "\n".join(line.strip() for line in text.split("\n"))
+        text = re.sub(r"\n{3,}", "\n\n", text).strip()
         return text
 
     def _format_skills(self, skills) -> List[str]:

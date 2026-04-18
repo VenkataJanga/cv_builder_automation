@@ -61,12 +61,19 @@ class Settings(BaseSettings):
     ENABLE_VOICE: bool = Field(default=True)
     ENABLE_REVIEW: bool = Field(default=False)
     ENABLE_RBAC: bool = Field(default=False)
+    
+    # LLM Extraction and Normalization (Phase 5)
+    ENABLE_LLM_EXTRACTION: bool = Field(default=False)
+    ENABLE_LLM_NORMALIZATION: bool = Field(default=False)
+    
     SESSION_REPOSITORY_BACKEND: str = Field(default="memory")
     SESSION_FILE_STORE_PATH: str = Field(default="./data/storage/sessions")
 
     LOG_LEVEL: str = Field(default="INFO")
     LOG_TO_FILE: bool = Field(default=True)
     LOG_FILE_PATH: str = Field(default="./log/app.log")
+    LOG_NEWEST_FIRST: bool = Field(default=True)
+    SUPPRESS_CONSOLE_PRINTS: bool = Field(default=True)
     SECRET_KEY: str = Field(default="replace-with-env-secret-key")
     ALGORITHM: str = Field(default="HS256")
     TOKEN_EXPIRE_MINUTES: int = Field(default=60)

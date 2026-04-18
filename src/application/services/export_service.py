@@ -4,7 +4,7 @@ Handles CV export operations with consistent data structure across all input mod
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from src.application.services.preview_service import PreviewService
 from src.infrastructure.rendering.template_engine import TemplateEngine
@@ -12,6 +12,9 @@ from src.infrastructure.rendering.docx_renderer import DocxRenderer
 from src.infrastructure.rendering.pdf_renderer import PdfRenderer
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema, SourceType
 from src.application.services.schema_mapper_service import SchemaMapperService
+from src.domain.cv.services.canonical_data_staging_service import (
+    CanonicalDataStagingService,
+)
 
 
 class ExportService:
@@ -28,6 +31,7 @@ class ExportService:
         self.docx_renderer = DocxRenderer()
         self.pdf_renderer = PdfRenderer()
         self.schema_mapper = SchemaMapperService()
+        self.staging_service = CanonicalDataStagingService()
         self.logger = logging.getLogger(__name__)
 
     def export_docx(self, cv_data: dict, template_style: str = "standard") -> bytes:
@@ -67,7 +71,11 @@ class ExportService:
             PDF file as bytes
         """
         cv_data = self._normalize_cv_data(cv_data)
-        context = self.template_engine.render_context(cv_data)
+
+        # Use the same rich context preparation as DOCX so PDF preserves
+        # full structured content (projects, education, skills variants, etc.).
+        context = self._prepare_docx_context(cv_data)
+
         # PDF rendering can also support template styles
         return self.pdf_renderer.render(context, template_style=template_style)
 
@@ -136,10 +144,12 @@ class ExportService:
         # Handle both formatted structure and direct personal_details structure
         header = cv_data.get("header", {})
         personal_details = cv_data.get("personal_details", {})
+        summary = cv_data.get("summary", {})
         personal_info = cv_data.get("personal_information", {})
         contact_info = cv_data.get("contact_info", {})
         candidate = cv_data.get("candidate", {})
         canonical_location = candidate.get("currentLocation", {}) if isinstance(candidate, dict) else {}
+        sanitized_certifications = self._sanitize_certifications(cv_data.get("certifications", []), cv_data)
 
         if isinstance(canonical_location, dict):
             location_fallback = (
@@ -166,7 +176,12 @@ class ExportService:
             "organization": self._get_field_value_from_sources(all_data_sources, ["current_organization", "organization", "company", "employer", "current_company"]),
             "grade": self._get_field_value_from_sources(all_data_sources, ["grade", "level", "job_level"]),
             "experience": self._get_field_value_from_sources(all_data_sources, ["total_experience", "experience", "years_of_experience", "work_experience"]),
-            "target_role": self._get_field_value_from_sources(all_data_sources, ["target_role", "desired_position", "target_position"]),
+            # Ensure target role survives export even when it lives under summary/canonical fields.
+            "target_role": (
+                self._get_field_value_from_sources(all_data_sources, ["target_role", "targetRole", "desired_position", "target_position", "careerObjective"]) 
+                or (summary.get("target_role") if isinstance(summary, dict) else "")
+                or (summary.get("targetRole") if isinstance(summary, dict) else "")
+            ),
             
             # Professional Summary
             "summary": cv_data.get("summary", ""),
@@ -188,7 +203,7 @@ class ExportService:
             "experience_section": self._format_experience_section(cv_data.get("work_experience", [])),
             "projects_section": self._format_projects_section(cv_data.get("project_experience", [])),
             "education_section": self._format_education_section(cv_data.get("education", [])),
-            "certifications_section": self._format_certifications_section(cv_data.get("certifications", [])),
+            "certifications_section": self._format_certifications_section(sanitized_certifications),
             
             # Experience & Leadership - PRESERVE STRUCTURED DATA
             "work_experience": cv_data.get("work_experience", []),
@@ -197,13 +212,13 @@ class ExportService:
             
             # Education & Certifications - PRESERVE STRUCTURED DATA + Individual Fields
             "education": cv_data.get("education", []),
-            "certifications": cv_data.get("certifications", []),
+            "certifications": sanitized_certifications,
             
             # Individual education fields for template placeholders
             **self._extract_primary_education_fields(cv_data.get("education", [])),
             
             # Individual certification fields for template placeholders  
-            **self._extract_primary_certification_fields(cv_data.get("certifications", [])),
+            **self._extract_primary_certification_fields(sanitized_certifications),
             
             # Additional Information
             "languages": cv_data.get("languages", []),
@@ -406,6 +421,61 @@ class ExportService:
             "issuer": self._get_field_value(primary_cert, ["issuer", "organization", "provider", "authority"]),
             "cert_year": self._get_field_value(primary_cert, ["year", "date", "completion_date", "issue_date"])
         }
+
+    def _sanitize_certifications(self, certifications: list, cv_data: dict) -> list:
+        """Return only meaningful certification entries for export rendering."""
+        if not isinstance(certifications, list):
+            return []
+
+        candidate_name = ""
+        candidate = cv_data.get("candidate", {})
+        if isinstance(candidate, dict):
+            candidate_name = str(candidate.get("fullName") or "").strip().lower()
+        if not candidate_name:
+            header = cv_data.get("header", {})
+            personal_details = cv_data.get("personal_details", {})
+            if isinstance(header, dict):
+                candidate_name = str(header.get("full_name") or header.get("name") or "").strip().lower()
+            if not candidate_name and isinstance(personal_details, dict):
+                candidate_name = str(personal_details.get("full_name") or personal_details.get("name") or "").strip().lower()
+
+        cleaned = []
+        for cert in certifications:
+            if isinstance(cert, str):
+                value = cert.strip()
+                if not value:
+                    continue
+                # Guard against malformed extraction artifacts like "NameVenkata Janga".
+                if value.lower().startswith("name") and len(value.split()) <= 3:
+                    continue
+                if candidate_name and value.lower() == candidate_name:
+                    continue
+                cleaned.append(value)
+                continue
+
+            if not isinstance(cert, dict):
+                continue
+
+            name = self._get_field_value(cert, ["name", "certification", "title"]).strip()
+            issuer = self._get_field_value(cert, ["issuer", "organization", "provider", "authority"]).strip()
+            year = self._get_field_value(cert, ["year", "date", "completion_date", "issue_date"]).strip()
+            credential = self._get_field_value(cert, ["credential_id", "id"]).strip()
+
+            if not name:
+                continue
+            if candidate_name and name.lower() == candidate_name:
+                continue
+            if name.lower().startswith("name") and len(name.split()) <= 3 and not (issuer or year or credential):
+                continue
+
+            cleaned.append({
+                "name": name,
+                "issuer": issuer,
+                "year": year,
+                "credential_id": credential,
+            })
+
+        return cleaned
 
     def _format_skills_for_docx(self, skills) -> str:
         """
@@ -789,3 +859,43 @@ class ExportService:
                 formatted.append("\n".join(cert_text))
         
         return "\n".join(formatted) if formatted else ""
+
+    def mark_extraction_exported(self, extraction_id: str) -> None:
+        """
+        Mark extraction as exported in staging layer.
+        
+        Called after successful export to track audit trail.
+        
+        Args:
+            extraction_id: Extraction staging record ID
+        """
+        try:
+            self.staging_service.mark_exported(extraction_id)
+            self.logger.info(f"Marked extraction {extraction_id} as exported")
+        except Exception as e:
+            self.logger.warning(f"Failed to mark extraction as exported: {str(e)}")
+
+    def clear_session_staging_after_export(self, session_id: str) -> Tuple[int, int]:
+        """
+        Clear session staging data after successful export.
+        
+        Optionally called after export completion to clean up staged data.
+        The staging records remain in the database (marked as 'cleared') for audit trail.
+        
+        Args:
+            session_id: User session ID
+            
+        Returns:
+            Tuple of (records_cleared, records_marked)
+        """
+        try:
+            records_cleared, records_marked = self.staging_service.clear_session_staging(
+                session_id=session_id
+            )
+            self.logger.info(
+                f"Cleared {records_cleared} staging records for session {session_id}"
+            )
+            return records_cleared, records_marked
+        except Exception as e:
+            self.logger.error(f"Failed to clear session staging: {str(e)}")
+            return 0, 0

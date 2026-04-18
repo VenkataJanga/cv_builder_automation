@@ -184,6 +184,45 @@ class ValidationService:
             "skills_score": base_score,
             "leadership_score": max(40, base_score),  # Minimum 40 for leadership
         }
+
+    def add_extraction_confidence_warnings(
+        self,
+        validation_result: Dict[str, Any],
+        confidence_scores: Dict[str, float],
+    ) -> Dict[str, Any]:
+        """
+        Add warnings if LLM extraction confidence is low (Phase 5).
+        
+        Args:
+            validation_result: Existing validation result dict
+            confidence_scores: Extraction confidence scores
+            
+        Returns:
+            Updated validation result with warnings added
+        """
+        if not confidence_scores:
+            return validation_result
+
+        result = validation_result.copy()
+        overall_confidence = confidence_scores.get("overall", 0.0)
+
+        # Add warning if overall confidence is low
+        if overall_confidence < 0.6:
+            warning = f"LLM extraction confidence is low ({overall_confidence*100:.1f}%). Manual review recommended."
+            if "warnings" not in result:
+                result["warnings"] = []
+            result["warnings"].append(warning)
+
+        # Add warnings for specific low-confidence fields
+        for field, confidence in confidence_scores.items():
+            if field != "overall" and confidence < 0.5:
+                warning = f"Low confidence in {field} extraction ({confidence*100:.1f}%). Verify accuracy."
+                if "warnings" not in result:
+                    result["warnings"] = []
+                if warning not in result["warnings"]:
+                    result["warnings"].append(warning)
+
+        return result
     
     def _compute_confidence(
         self, completeness: float, error_count: int, warning_count: int

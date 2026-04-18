@@ -7,6 +7,8 @@ class CVBuilderApp {
         this.audioChunks = [];
         this.isRecording = false;
         this.currentCVData = null;
+        this.currentCanonicalCV = null;
+        this.activeFlow = null;
         this.isEditMode = false;
         this.editableData = null;
         this.token = localStorage.getItem('cv_builder_token') || null;
@@ -22,6 +24,201 @@ class CVBuilderApp {
         this.checkServerStatus();
         this.setupDragAndDrop();
         this.checkAuthStatus();
+    }
+
+    getPreferredCVData(data, fallback = {}) {
+        if (!data || typeof data !== 'object') {
+            return fallback || {};
+        }
+
+        return (
+            data.preview ||
+            data.canonical_cv ||
+            data.cv_data ||
+            data.extracted_cv_data ||
+            data.parsed_data ||
+            fallback ||
+            {}
+        );
+    }
+
+    getInitialChatMarkup() {
+        return `
+            <div class="message bot-message">
+                <div class="message-content">
+                    Hello! I'm here to help you build your CV. You can:
+                    <ul>
+                        <li>Upload your existing CV (PDF/DOCX/DOC)</li>
+                        <li>Record yourself talking about your experience</li>
+                        <li>Chat with me to build your CV step by step</li>
+                    </ul>
+                    How would you like to start?
+                </div>
+            </div>
+        `;
+    }
+
+    hasMeaningfulFlowData() {
+        const hasPreviewData = Boolean(this.currentCVData && Object.keys(this.currentCVData).length > 0);
+        const canonicalCandidate = this.currentCanonicalCV?.candidate || {};
+        const canonicalExperience = this.currentCanonicalCV?.experience || {};
+        const hasCanonicalData = Boolean(
+            (canonicalCandidate.fullName && String(canonicalCandidate.fullName).trim())
+            || (canonicalCandidate.summary && String(canonicalCandidate.summary).trim())
+            || (Array.isArray(canonicalExperience.projects) && canonicalExperience.projects.length > 0)
+            || (Array.isArray(this.currentCanonicalCV?.education) && this.currentCanonicalCV.education.length > 0)
+        );
+
+        const userMessages = document.querySelectorAll('#chatMessages .user-message');
+        const hasConversationInput = userMessages.length > 0;
+
+        return hasPreviewData || hasCanonicalData || hasConversationInput;
+    }
+
+    async ensureSingleActiveFlow(targetFlow) {
+        if (!targetFlow) {
+            return true;
+        }
+
+        if (!this.activeFlow || this.activeFlow === targetFlow) {
+            this.activeFlow = targetFlow;
+            return true;
+        }
+
+        if (!this.hasMeaningfulFlowData()) {
+            this.activeFlow = targetFlow;
+            return true;
+        }
+
+        const confirmed = window.confirm(
+            `You are switching from ${this.activeFlow} to ${targetFlow}. ` +
+            'This will clear the current preview and unsaved temporary session data. Do you want to continue?'
+        );
+
+        if (!confirmed) {
+            return false;
+        }
+
+        await this.clearCurrentSession({
+            resetBackend: true,
+            notify: false,
+            startFreshConversation: false,
+        });
+
+        this.activeFlow = targetFlow;
+        return true;
+    }
+
+    resetApplicationState() {
+        if (this.mediaRecorder && this.isRecording) {
+            try {
+                this.mediaRecorder.stop();
+            } catch (_) {
+                // Ignore recorder shutdown issues while resetting the UI state.
+            }
+        }
+
+        this.currentSessionId = null;
+        this.mediaRecorder = null;
+        this.audioChunks = [];
+        this.isRecording = false;
+        this.currentCVData = null;
+        this.currentCanonicalCV = null;
+        this.activeFlow = null;
+        this.isEditMode = false;
+        this.editableData = null;
+
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages) {
+            chatMessages.innerHTML = this.getInitialChatMarkup();
+        }
+
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) {
+            chatInput.value = '';
+        }
+
+        const sessionInput = document.getElementById('sessionId');
+        if (sessionInput) {
+            sessionInput.value = '';
+        }
+
+        const currentSession = document.getElementById('currentSession');
+        if (currentSession) {
+            currentSession.innerHTML = '';
+        }
+
+        const preview = document.getElementById('cvPreview');
+        if (preview) {
+            preview.innerHTML = `
+                <div class="preview-placeholder">
+                    <p>Your CV data will appear here as you build it</p>
+                    <p>Upload a document, record audio, or start chatting to begin</p>
+                </div>
+            `;
+        }
+
+        const resultAreas = ['uploadResult', 'transcriptionResult'];
+        resultAreas.forEach((elementId) => {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.textContent = '';
+                element.className = 'result-area';
+                element.style.display = 'none';
+            }
+        });
+
+        ['uploadProgress', 'audioProgress'].forEach((elementId) => this.hideProgress(elementId));
+
+        const recordingStatus = document.getElementById('recordingStatus');
+        if (recordingStatus) {
+            recordingStatus.textContent = '';
+        }
+
+        const audioPlayback = document.getElementById('audioPlayback');
+        if (audioPlayback) {
+            try {
+                audioPlayback.pause();
+            } catch (_) {
+                // Ignore pause errors during reset.
+            }
+            audioPlayback.removeAttribute('src');
+            audioPlayback.style.display = 'none';
+        }
+
+        const recordBtn = document.getElementById('recordBtn');
+        if (recordBtn) {
+            recordBtn.innerHTML = '<span class="record-icon">🔴</span> Start Recording';
+            recordBtn.classList.remove('recording');
+        }
+
+        this.resetButtonStates();
+        this.updateStatus('sessionStatus', 'No active session', '');
+        this.updateStatus('lastUpdate', new Date().toLocaleTimeString(), '');
+    }
+
+    async clearCurrentSession({ resetBackend = true, notify = true, startFreshConversation = true } = {}) {
+        const activeSessionId = this.currentSessionId;
+
+        if (resetBackend && activeSessionId && this.token) {
+            try {
+                await this.request(`${this.apiBase}/session/${activeSessionId}`, {
+                    method: 'DELETE'
+                });
+            } catch (_) {
+                // Client state reset is the primary requirement; tolerate backend cleanup failures.
+            }
+        }
+
+        this.resetApplicationState();
+
+        if (startFreshConversation && this.token) {
+            await this.createConversationSession();
+        }
+
+        if (notify) {
+            this.showNotification('Session cleared. Started a fresh session.', 'success');
+        }
     }
 
     // ── Auth helpers ──────────────────────────────────────────────────────────
@@ -45,6 +242,7 @@ class CVBuilderApp {
 
     async checkAuthStatus() {
         if (!this.token) {
+            this.resetApplicationState();
             this.showLoginOverlay();
             return;
         }
@@ -116,6 +314,7 @@ class CVBuilderApp {
             });
             this.currentUser = meRes.ok ? await meRes.json() : { username };
 
+            this.resetApplicationState();
             this.hideLoginOverlay();
             this.showUserInfoBar();
             this.initializeChat();
@@ -129,6 +328,7 @@ class CVBuilderApp {
     }
 
     logout() {
+        this.resetApplicationState();
         this.token = null;
         this.currentUser = null;
         localStorage.removeItem('cv_builder_token');
@@ -147,6 +347,7 @@ class CVBuilderApp {
             this.login(username, password);
         });
         document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
+        document.getElementById('clearSessionBtn').addEventListener('click', () => this.clearCurrentSession());
 
         // Session Management
         document.getElementById('createSession').addEventListener('click', () => this.createSession());
@@ -227,7 +428,7 @@ class CVBuilderApp {
     }
 
     async initializeChat() {
-        this.addChatMessage("Hello! I'm here to help you build your CV. Let's begin with a few guided questions.", 'bot');
+        this.resetApplicationState();
         await this.createConversationSession();
     }
 
@@ -241,8 +442,10 @@ class CVBuilderApp {
 
             if (response.ok) {
                 const data = await response.json();
+                this.activeFlow = 'conversation';
                 this.currentSessionId = data.session_id;
-                this.currentCVData = data.cv_data || {};
+                this.currentCVData = this.getPreferredCVData(data, this.currentCVData);
+                this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
                 this.updateSessionDisplay(data.session_id);
                 if (data.question) {
                     this.addChatMessage(data.question, 'bot');
@@ -304,8 +507,10 @@ class CVBuilderApp {
 
             if (response.ok) {
                 const data = await response.json();
+                this.activeFlow = 'loaded';
                 this.currentSessionId = sessionId;
-                this.currentCVData = data.cv_data || {};
+                this.currentCVData = this.getPreferredCVData(data, this.currentCVData);
+                this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
                 this.updateSessionDisplay(sessionId);
                 this.refreshCVPreview();
                 this.showNotification('Session loaded successfully!', 'success');
@@ -320,9 +525,22 @@ class CVBuilderApp {
     async handleFileUpload(file) {
         if (!file) return;
 
-        if (!file.name.match(/\.(pdf|docx)$/i)) {
-            this.showNotification('Please select a PDF or DOCX file', 'error');
+        const canProceed = await this.ensureSingleActiveFlow('upload');
+        if (!canProceed) {
             return;
+        }
+
+        if (!file.name.match(/\.(pdf|docx|doc)$/i)) {
+            this.showNotification('Please select a PDF, DOCX, or DOC file', 'error');
+            return;
+        }
+
+        if (!this.currentSessionId) {
+            await this.createSession();
+            if (!this.currentSessionId) {
+                this.showNotification('Unable to create a session for document upload.', 'error');
+                return;
+            }
         }
 
         this.showProgress('uploadProgress', 'Uploading file...');
@@ -341,7 +559,9 @@ class CVBuilderApp {
 
             if (response.ok) {
                 const data = await response.json();
-                this.currentCVData = data.cv_data || data.parsed_data;
+                this.activeFlow = 'upload';
+                this.currentCVData = this.getPreferredCVData(data, this.currentCVData);
+                this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
                 this.currentSessionId = data.session_id || this.currentSessionId;
                 
                 if (data.session_id) {
@@ -440,6 +660,11 @@ class CVBuilderApp {
     }
 
     async processAudio(audioBlob, retryOnInvalidSession = true) {
+        const canProceed = await this.ensureSingleActiveFlow('voice');
+        if (!canProceed) {
+            return;
+        }
+
         this.showProgress('audioProgress', 'Processing audio...');
 
         try {
@@ -474,7 +699,9 @@ class CVBuilderApp {
                     throw new Error(data.error);
                 }
 
-                this.currentCVData = data.cv_data || data.extracted_cv_data;
+                this.currentCVData = this.getPreferredCVData(data, this.currentCVData);
+                this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
+                this.activeFlow = 'voice';
                 this.currentSessionId = data.session_id || this.currentSessionId;
 
                 if (data.session_id) {
@@ -488,8 +715,11 @@ class CVBuilderApp {
                 if (data.raw_transcript) {
                     resultText += `Transcript: ${data.raw_transcript.substring(0, 200)}${data.raw_transcript.length > 200 ? '...' : ''}`;
                 }
+                if (data.audio_quality_warning) {
+                    resultText += `\n\n⚠️ ${data.audio_quality_warning}`;
+                }
                 
-                this.showResult('transcriptionResult', resultText, 'success');
+                this.showResult('transcriptionResult', resultText, data.audio_quality_warning ? 'error' : 'success');
                 
                 // Reset button states before refreshing preview
                 this.resetButtonStates();
@@ -520,6 +750,11 @@ class CVBuilderApp {
         
         if (!message) return;
 
+        const canProceed = await this.ensureSingleActiveFlow('conversation');
+        if (!canProceed) {
+            return;
+        }
+
         if (!this.currentSessionId) {
             await this.createConversationSession();
             if (!this.currentSessionId) {
@@ -543,10 +778,13 @@ class CVBuilderApp {
 
             if (response.ok) {
                 const data = await response.json();
+                this.activeFlow = 'conversation';
                 this.addChatMessage(data.bot || 'No response', 'bot');
                 
-                if (data.cv_data) {
-                    this.currentCVData = data.cv_data;
+                const preferredData = this.getPreferredCVData(data, null);
+                if (preferredData && Object.keys(preferredData).length > 0) {
+                    this.currentCVData = preferredData;
+                    this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
                     this.refreshCVPreview();
                 }
                 
@@ -649,17 +887,79 @@ class CVBuilderApp {
     }
 
     extractSummaryText(summaryValue) {
-        // Extract text from various summary formats
+        // Extract text from summary-like fields only; avoid flattening unrelated object values.
         if (typeof summaryValue === 'string') return summaryValue;
-        if (summaryValue?.professional_summary) return summaryValue.professional_summary;
-        if (summaryValue?.summary) return summaryValue.summary;
+
         if (Array.isArray(summaryValue)) {
-            return summaryValue.map(s => this.extractSummaryText(s)).filter(Boolean).join(' ');
+            return summaryValue
+                .map(item => this.extractSummaryText(item))
+                .filter(Boolean)
+                .join('\n');
         }
+
         if (summaryValue && typeof summaryValue === 'object') {
-            return Object.values(summaryValue).map(s => this.extractSummaryText(s)).filter(Boolean).join(' ');
+            const preferredKeys = [
+                'professional_summary',
+                'summary',
+                'experience_summary',
+                'profile_summary',
+                'description',
+                'text',
+                'content'
+            ];
+
+            for (const key of preferredKeys) {
+                if (summaryValue[key] !== undefined && summaryValue[key] !== null && summaryValue[key] !== '') {
+                    const extracted = this.extractSummaryText(summaryValue[key]);
+                    if (extracted) return extracted;
+                }
+            }
+
+            const ignoredKeys = new Set([
+                'target_role',
+                'total_experience_years',
+                'total_experience_months',
+                'relevant_experience_years',
+                'relevant_experience_months',
+                'years_of_experience'
+            ]);
+
+            const fallbackParts = Object.entries(summaryValue)
+                .filter(([key]) => !ignoredKeys.has(String(key).toLowerCase()))
+                .map(([, value]) => this.extractSummaryText(value))
+                .filter(Boolean);
+
+            return fallbackParts.join('\n');
         }
+
         return '';
+    }
+
+    normalizeSummaryLines(summaryText) {
+        const text = String(summaryText || '').replace(/\r\n/g, '\n').trim();
+        if (!text) return [];
+
+        const bulletChars = /[\u2022\u25E6\u25AA\u25CF\u25C6\u25BA\uF076]/g;
+        let normalized = text.replace(bulletChars, '\n• ');
+
+        normalized = normalized
+            .replace(/\n{3,}/g, '\n\n')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        if (normalized.length === 1) {
+            // Fallback split for flattened text that still contains list markers like "a." or "1.".
+            const single = normalized[0]
+                .replace(/\s+([a-zA-Z]\.)\s+/g, '\n$1 ')
+                .replace(/\s+(\d+\.)\s+/g, '\n$1 ');
+            normalized = single
+                .split('\n')
+                .map(line => line.trim())
+                .filter(Boolean);
+        }
+
+        return normalized.map(line => line.replace(/^([\-*\u2022•]|\d+[.)]|[a-zA-Z][.)])\s+/, '').trim()).filter(Boolean);
     }
 
     mapWorkExperience(experiences) {
@@ -825,7 +1125,8 @@ class CVBuilderApp {
             console.log('DEBUG: Review response:', data);
 
             // Update current CV data with validated version
-            this.currentCVData = data.cv_data;
+            this.currentCVData = this.getPreferredCVData(data, this.currentCVData);
+            this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
 
             // Update review status badge
             this.updateReviewStatusBadge(data.review_status);
@@ -847,8 +1148,15 @@ class CVBuilderApp {
                 this.showNotification('CV saved. Please review any feedback.', 'info');
             }
 
-            // Refresh preview to show any updates
-            await this.refreshCVPreview();
+            // Keep user in edit mode when there are validation issues so fields remain editable.
+            const hasIssues = (data.validation && data.validation.can_export === false)
+                || (Array.isArray(data.validation?.issues) && data.validation.issues.length > 0)
+                || (Array.isArray(data.validation?.errors) && data.validation.errors.length > 0);
+
+            if (!hasIssues) {
+                // Refresh preview only when validation passes.
+                await this.refreshCVPreview();
+            }
         } catch (error) {
             console.error('Validation error:', error);
             this.showNotification('Failed to validate CV: ' + error.message, 'error');
@@ -1158,6 +1466,8 @@ class CVBuilderApp {
             }
             return [];
         })();
+
+        const canonicalUnmapped = this.currentCanonicalCV?.unmappedData || cvData.unmappedData || {};
         
         let html = '<form id="cvEditForm" class="cv-edit-sections">';
         
@@ -1304,6 +1614,9 @@ class CVBuilderApp {
         
         // Project Experience Section - NEW ADDITION
         html += this.generateProjectExperienceEditSection(projectExperience);
+
+        // Others Section - captured unmapped details from canonical pipeline
+        html += this.generateOthersEditSection(canonicalUnmapped);
 
         html += '</form>';
         html += '<p class="form-note"><strong>Note:</strong> Fields marked with * are required for CV validation. Other sections help improve the completeness of your CV.</p>';
@@ -1550,6 +1863,259 @@ class CVBuilderApp {
         return result;
     }
 
+    flattenUnmappedEntries(unmappedData) {
+        const entries = [];
+        if (!unmappedData || typeof unmappedData !== 'object') return entries;
+
+        Object.entries(unmappedData).forEach(([source, bucket]) => {
+            if (!bucket || typeof bucket !== 'object') return;
+            Object.entries(bucket).forEach(([key, value]) => {
+                const asText = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+                if (!asText || !String(asText).trim()) return;
+                entries.push({ source, key, valueText: asText });
+            });
+        });
+
+        return entries;
+    }
+
+    inferTargetPathFromUnmappedKey(source, key, valueText = '') {
+        const normalizedSource = String(source || '').toLowerCase();
+        const normalizedKey = String(key || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+        const normalizedValue = String(valueText || '').toLowerCase();
+
+        const directMap = {
+            portal_id: 'candidate.portalId',
+            employee_id: 'candidate.portalId',
+            emp_id: 'candidate.portalId',
+            email: 'candidate.email',
+            email_id: 'candidate.email',
+            mail: 'candidate.email',
+            phone: 'candidate.phoneNumber',
+            phone_number: 'candidate.phoneNumber',
+            contact_number: 'candidate.phoneNumber',
+            mobile: 'candidate.phoneNumber',
+            linkedin: 'personalDetails.linkedinUrl',
+            linkedin_url: 'personalDetails.linkedinUrl',
+            current_title: 'candidate.currentDesignation',
+            designation: 'candidate.currentDesignation',
+            current_designation: 'candidate.currentDesignation',
+            current_organization: 'candidate.currentOrganization',
+            company: 'candidate.currentOrganization',
+            summary: 'candidate.summary',
+            professional_summary: 'candidate.summary',
+            primary_skills: 'skills.primarySkills',
+            secondary_skills: 'skills.secondarySkills',
+            domain_expertise: 'experience.domainExperience',
+            domains: 'experience.domainExperience',
+        };
+
+        if (directMap[normalizedKey]) {
+            return directMap[normalizedKey];
+        }
+
+        if (normalizedKey.includes('skill')) {
+            if (normalizedKey.includes('secondary')) return 'skills.secondarySkills';
+            return 'skills.primarySkills';
+        }
+
+        if (normalizedKey.includes('domain') || normalizedKey.includes('industry')) {
+            return 'experience.domainExperience';
+        }
+
+        if (normalizedKey.includes('linkedin')) {
+            return 'personalDetails.linkedinUrl';
+        }
+
+        if (normalizedKey.includes('mail') || normalizedValue.includes('@')) {
+            return 'candidate.email';
+        }
+
+        if (normalizedKey.includes('phone') || normalizedKey.includes('mobile') || normalizedKey.includes('contact')) {
+            return 'candidate.phoneNumber';
+        }
+
+        if (normalizedKey.includes('portal') || normalizedKey.includes('employee')) {
+            return 'candidate.portalId';
+        }
+
+        if (normalizedKey.includes('role') || normalizedKey.includes('title') || normalizedKey.includes('designation')) {
+            return 'candidate.currentDesignation';
+        }
+
+        if (normalizedKey.includes('organization') || normalizedKey.includes('company') || normalizedKey.includes('employer')) {
+            return 'candidate.currentOrganization';
+        }
+
+        if (normalizedSource.includes('questionnaire') && (normalizedKey.includes('profile') || normalizedKey.includes('summary'))) {
+            return 'candidate.summary';
+        }
+
+        return '';
+    }
+
+    generateOthersEditSection(unmappedData) {
+        const entries = this.flattenUnmappedEntries(unmappedData);
+        if (entries.length === 0) {
+            return `
+                <div class="edit-section" id="others-edit-section">
+                    <h3 class="section-title">🧩 Others (Unmapped Details)</h3>
+                    <p class="form-help">No unmapped details found for this CV.</p>
+                </div>
+            `;
+        }
+
+        const suggestedTargets = [
+            'candidate.portalId',
+            'candidate.phoneNumber',
+            'candidate.email',
+            'candidate.currentDesignation',
+            'candidate.currentOrganization',
+            'candidate.summary',
+            'skills.primarySkills',
+            'skills.secondarySkills',
+            'experience.domainExperience',
+            'personalDetails.linkedinUrl',
+        ];
+
+        let html = `
+            <div class="edit-section" id="others-edit-section">
+                <h3 class="section-title">🧩 Others (Unmapped Details)</h3>
+                <p class="form-help">These details were captured but not auto-mapped. Optionally map them below.</p>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin:8px 0 14px;">
+                    <button type="button" class="btn btn-secondary" onclick="window.cvApp.resetOthersIncludes()">
+                        ↺ Reset Includes
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="window.cvApp.applySuggestedOthersMappings()">
+                        ✨ Apply Suggested Mappings
+                    </button>
+                </div>
+                <datalist id="others-target-suggestions">
+                    ${suggestedTargets.map((t) => `<option value="${this.escapeHtml(t)}"></option>`).join('')}
+                </datalist>
+                <div id="others-mapping-entries">
+        `;
+
+        entries.forEach((entry, idx) => {
+            const suggestedTarget = this.inferTargetPathFromUnmappedKey(entry.source, entry.key, entry.valueText);
+            html += `
+                <div class="others-mapping-row" data-others-index="${idx}" style="border:1px solid #e5e7eb;border-radius:6px;padding:12px;margin-bottom:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <strong>${this.escapeHtml(entry.source)} / ${this.escapeHtml(entry.key)}</strong>
+                        <label style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="others_include_${idx}" checked>
+                            Include
+                        </label>
+                    </div>
+                    <div class="form-group">
+                        <label for="others_target_${idx}">Map To Canonical Field</label>
+                        <input type="text" id="others_target_${idx}" class="form-control" list="others-target-suggestions"
+                               value="${this.escapeHtml(suggestedTarget)}"
+                               placeholder="e.g., candidate.portalId or skills.primarySkills">
+                        ${suggestedTarget
+                            ? `<small class="form-help">Suggested mapping: ${this.escapeHtml(suggestedTarget)}</small>`
+                            : '<small class="form-help">No automatic suggestion. Choose a canonical path if you want to map this value.</small>'}
+                    </div>
+                    <div class="form-group">
+                        <label for="others_value_${idx}">Captured Value</label>
+                        <textarea id="others_value_${idx}" class="form-control" rows="3">${this.escapeHtml(entry.valueText)}</textarea>
+                    </div>
+                    <input type="hidden" id="others_source_${idx}" value="${this.escapeHtml(entry.source)}">
+                    <input type="hidden" id="others_key_${idx}" value="${this.escapeHtml(entry.key)}">
+                </div>
+            `;
+        });
+
+        html += '</div></div>';
+        return html;
+    }
+
+    applySuggestedOthersMappings() {
+        const rows = document.querySelectorAll('.others-mapping-row');
+        if (!rows.length) {
+            this.showNotification('No Others rows available to map.', 'info');
+            return;
+        }
+
+        let applied = 0;
+        let skipped = 0;
+
+        rows.forEach((row) => {
+            const idx = row.getAttribute('data-others-index');
+            const source = document.getElementById(`others_source_${idx}`)?.value || '';
+            const key = document.getElementById(`others_key_${idx}`)?.value || '';
+            const valueText = document.getElementById(`others_value_${idx}`)?.value || '';
+            const targetInput = document.getElementById(`others_target_${idx}`);
+            const includeInput = document.getElementById(`others_include_${idx}`);
+
+            if (!targetInput || !includeInput) {
+                skipped += 1;
+                return;
+            }
+
+            const suggested = this.inferTargetPathFromUnmappedKey(source, key, valueText);
+            if (suggested) {
+                targetInput.value = suggested;
+                includeInput.checked = true;
+                applied += 1;
+            } else {
+                includeInput.checked = false;
+                skipped += 1;
+            }
+        });
+
+        this.showNotification(
+            `Applied ${applied} suggested mapping(s). ${skipped} row(s) left unmapped and excluded.`,
+            applied > 0 ? 'success' : 'info'
+        );
+    }
+
+    resetOthersIncludes() {
+        const rows = document.querySelectorAll('.others-mapping-row');
+        if (!rows.length) {
+            this.showNotification('No Others rows available to reset.', 'info');
+            return;
+        }
+
+        let resetCount = 0;
+        rows.forEach((row) => {
+            const idx = row.getAttribute('data-others-index');
+            const includeInput = document.getElementById(`others_include_${idx}`);
+            if (!includeInput) return;
+            includeInput.checked = true;
+            resetCount += 1;
+        });
+
+        this.showNotification(`Reset includes for ${resetCount} row(s).`, 'success');
+    }
+
+    _collectOthersMappingsFromForm() {
+        const rows = document.querySelectorAll('.others-mapping-row');
+        const mappings = [];
+        rows.forEach((row) => {
+            const idx = row.getAttribute('data-others-index');
+            const include = document.getElementById(`others_include_${idx}`)?.checked;
+            if (!include) return;
+
+            const source = document.getElementById(`others_source_${idx}`)?.value || '';
+            const key = document.getElementById(`others_key_${idx}`)?.value || '';
+            const targetPath = document.getElementById(`others_target_${idx}`)?.value?.trim() || '';
+            const value = document.getElementById(`others_value_${idx}`)?.value?.trim() || '';
+
+            if (!value) return;
+            mappings.push({
+                source,
+                key,
+                target_path: targetPath,
+                value,
+            });
+        });
+        return mappings;
+    }
+
     extractTotalExperienceValue(profile, cvData) {
         // Try multiple sources for total experience value
         let experienceValue = profile.total_experience || 
@@ -1682,6 +2248,7 @@ class CVBuilderApp {
 
             // Project data — collect all entries from indexed form fields
             const projectData = this._collectProjectsFromForm();
+            const othersMappings = this._collectOthersMappingsFromForm();
 
             const updatedData = {
                 personal_details: {
@@ -1744,7 +2311,8 @@ class CVBuilderApp {
                     contact_number: phone || null,
                     linkedin: linkedin || null,
                     grade: this.currentCVData?.header?.grade || null
-                }
+                },
+                _others_mappings: othersMappings,
             };
 
             // Enhanced validation with format checks
@@ -1796,12 +2364,32 @@ class CVBuilderApp {
             const data = await response.json();
             
             // Update current CV data
-            this.currentCVData = data.cv_data || updatedData;
+            this.currentCVData = this.getPreferredCVData(data, updatedData);
+            this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
             
+            // Show validation results if present
+            if (data.validation) {
+                this.displayValidationFeedback(data.validation);
+                this.updateReviewStatusBadge(data.review_status);
+                this.updateExportButtonState(data.review_status, data.can_export);
+            }
+
+            const hasValidationIssues = (data.can_export === false)
+                || (Array.isArray(data.validation?.issues) && data.validation.issues.length > 0)
+                || (Array.isArray(data.validation?.errors) && data.validation.errors.length > 0);
+
+            if (hasValidationIssues) {
+                // Keep edit mode active so user can continue fixing fields.
+                this.showNotification('⚠ Changes saved, but some required fields are still missing. Please update highlighted fields.', 'error');
+                this.ensureEditableSectionsForValidationIssues(data.validation || {});
+                restoreButton();
+                return;
+            }
+
             // Show success notification immediately
             this.showNotification('✓ Changes saved successfully!', 'success');
             
-            // Exit edit mode BEFORE restoring button (button will be removed from DOM)
+            // Exit edit mode only when validation is clean
             this.isEditMode = false;
             this.editableData = null;
             const toggleBtn = document.getElementById('toggleEditMode');
@@ -1812,13 +2400,6 @@ class CVBuilderApp {
             
             // Refresh preview (this will remove the edit form and button from DOM)
             await this.refreshCVPreview();
-            
-            // Show validation results if present
-            if (data.validation) {
-                this.displayValidationFeedback(data.validation);
-                this.updateReviewStatusBadge(data.review_status);
-                this.updateExportButtonState(data.review_status, data.can_export);
-            }
             
             // Reset the saving flag after everything completes
             this._isSaving = false;
@@ -2039,6 +2620,7 @@ class CVBuilderApp {
             }
             const data = await response.json();
             console.log('DEBUG: Full Preview API response:', JSON.stringify(data, null, 2));
+            this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
             
             // Update review status badge if present in response
             if (data.review_status) {
@@ -2063,7 +2645,12 @@ class CVBuilderApp {
                 console.log('Using data.preview');
                 cvDataToDisplay = data.preview;
             }
-            // Option 3: Fallback to local data
+            // Option 3: Use canonical source if returned by newer APIs
+            else if (data.canonical_cv && Object.keys(data.canonical_cv).length > 0) {
+                console.log('Using data.canonical_cv');
+                cvDataToDisplay = data.canonical_cv;
+            }
+            // Option 4: Fallback to local data
             else if (this.currentCVData && Object.keys(this.currentCVData).length > 0) {
                 console.log('Using local currentCVData as fallback');
                 cvDataToDisplay = this.currentCVData;
@@ -2187,13 +2774,21 @@ class CVBuilderApp {
             const raw = String(value || '').trim();
             if (!raw) return '';
             const lowered = raw.toLowerCase().replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '');
-            const invalidValues = new Set(['and', 'na', 'n/a', 'none', 'null', 'unknown', 'not available']);
+            const invalidValues = new Set(['and', 'na', 'n/a', 'none', 'null', 'undefined', 'unknown', 'not available']);
             const cleaned = lowered
                 .replace(/^and\s+/i, '')
                 .replace(/^is\s+/i, '')
                 .replace(/^in\s+/i, '')
                 .trim();
-            return invalidValues.has(cleaned) ? '' : raw.replace(/^(and|is|in)\s+/i, '').trim();
+            if (invalidValues.has(cleaned)) return '';
+
+            const parts = raw
+                .split(',')
+                .map(part => part.trim())
+                .filter(Boolean)
+                .filter(part => !invalidValues.has(part.toLowerCase()));
+
+            return parts.length > 0 ? parts.join(', ') : '';
         };
 
         const sanitizeSecondarySkills = (skills) => {
@@ -2242,6 +2837,7 @@ class CVBuilderApp {
             if (safeCurrentTitle) html += `<h2>${safeCurrentTitle}</h2>`;
             if (profile.current_organization) html += `<p><strong>Organization:</strong> ${profile.current_organization}</p>`;
             if (profile.total_experience) html += `<p><strong>Experience:</strong> ${profile.total_experience} years</p>`;
+            if (profile.grade) html += `<p><strong>Current Grade:</strong> ${profile.grade}</p>`;
             if (profile.target_role) html += `<p><strong>Target Role:</strong> ${profile.target_role}</p>`;
             if (portalId) html += `<p><strong>Portal ID:</strong> ${portalId}</p>`;
             if (profile.email) html += `<p><strong>Email:</strong> ${profile.email}</p>`;
@@ -2254,23 +2850,19 @@ class CVBuilderApp {
             ?? cvData.summary?.summary
             ?? cvData.summary;
 
-        const extractSummaryText = (value) => {
-            if (typeof value === 'string') return value;
-            if (Array.isArray(value)) {
-                return value.map(extractSummaryText).filter(Boolean).join(' ');
+        const summaryText = this.extractSummaryText(summaryValue).trim();
+        const summaryLines = this.normalizeSummaryLines(summaryText);
+        if (summaryLines.length > 0) {
+            html += `<h3>Professional Summary</h3>`;
+            if (summaryLines.length === 1) {
+                html += `<p>${this.escapeHtml(summaryLines[0])}</p>`;
+            } else {
+                html += '<ul>';
+                summaryLines.forEach(line => {
+                    html += `<li>${this.escapeHtml(line)}</li>`;
+                });
+                html += '</ul>';
             }
-            if (value && typeof value === 'object') {
-                return Object.values(value)
-                    .map(extractSummaryText)
-                    .filter(Boolean)
-                    .join(' ');
-            }
-            return '';
-        };
-
-        let summaryText = extractSummaryText(summaryValue).trim();
-        if (summaryText) {
-            html += `<h3>Professional Summary</h3><p>${summaryText}</p>`;
         }
 
         // Skills
@@ -2298,10 +2890,14 @@ class CVBuilderApp {
             html += `<h3>Work Experience</h3>`;
             cvData.work_experience.forEach(exp => {
                 html += `<div class="experience-item">`;
-                if (exp.position) html += `<h4>${exp.position}</h4>`;
-                if (exp.company) html += `<p><strong>${exp.company}</strong></p>`;
-                if (exp.duration) html += `<p>${exp.duration}</p>`;
-                if (exp.description) html += `<p>${exp.description}</p>`;
+                const position = exp.position || exp.designation;
+                const company = exp.company || exp.organization;
+                const duration = exp.duration || ((exp.start_date || exp.end_date) ? `${exp.start_date || ''}${(exp.start_date && exp.end_date) ? ' - ' : ''}${exp.end_date || ''}` : '');
+                const description = exp.description || normalizeList(exp.responsibilities || []).join('. ');
+                if (position) html += `<h4>${position}</h4>`;
+                if (company) html += `<p><strong>${company}</strong></p>`;
+                if (duration) html += `<p>${duration}</p>`;
+                if (description) html += `<p>${description}</p>`;
                 html += `</div>`;
             });
         }

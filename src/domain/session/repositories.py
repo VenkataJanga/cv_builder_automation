@@ -198,11 +198,11 @@ class DatabaseSessionRepository(SessionRepository):
 
     @staticmethod
     def _dump(value: object) -> str:
-        return json.dumps(value or {}, ensure_ascii=True)
+        return json.dumps(value or {}, ensure_ascii=False, default=str)
 
     @staticmethod
     def _dump_list(value: object) -> str:
-        return json.dumps(value or [], ensure_ascii=True)
+        return json.dumps(value or [], ensure_ascii=False, default=str)
 
     @staticmethod
     def _parse(value: object, default):

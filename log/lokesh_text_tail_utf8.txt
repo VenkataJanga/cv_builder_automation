@@ -1,0 +1,484 @@
+﻿FILE data\storage\uploads\49255b8b-b23c-4992-80b9-4e9e1e5f8250_Lokesh Kumar Resume.docx
+TOTAL 271
+152: 
+---END---
+153: 2) Wells Fargo Online Payment Services (for NTT DATA )    (Tenure March 2023 to January-2025)
+---END---
+154: 
+---END---
+155: OPS (Online Payment Services) is a payment service platform under Wells Fargo consisting of multiple options Including IFI transfers, Wires Transfers and Zelle. This project deals on various kinds of payment services provided by Wells Fargo. 
+---END---
+156: 
+---END---
+157: 
+---END---
+158: Primary Responsibilities: 
+---END---
+159: 
+---END---
+160: I have worked on multiple layers of OPS (Online Payment Services) for various development activities.
+---END---
+161: I have worked on development activities related to IFI / Wires transfers.
+---END---
+162: I have worked on upgrading multiple JARS as part of JARS upgrade activities.
+---END---
+163: I have worked on providing DB support and releasing SQL scripts for multiple releases. 
+---END---
+164: I have been part of team for upgrading project to JAVA 17 . 
+---END---
+165: I have worked on modifying code and testing multiple batches and even test cases that are part of OPS. 
+---END---
+166: 
+---END---
+167: 
+---END---
+168: 
+---END---
+169: 3) Citi iOS Container Services ( for NTT DATA Services)     ( Tenure January-2025 till Current Date) 
+---END---
+170: 
+---END---
+171: The iOS Container Services is a set of modular microservices designed to provide dynamic personalized content for CITIÆs mobile banking application. The services integrate with various backend systems to drive user-specific interfaces, onboarding tutorials, navigation menus, and personalized offers. The platform also supports feature flag management & dynamic UI configuration.
+---END---
+172: 
+---END---
+173: Primary Responsibilities:   
+---END---
+174: I have worked on multiple services for iOS Container team for various development activities.  
+---END---
+175: I have worked for WhatsNew Service where I was part of multiple development activities including changes in WhatsNew Modal API, Code optimization to reduce Gemfire calls etc.
+---END---
+176: I have contributed to Navigation Service which is used to manage menus and quick link for multiple dashboards including Service Dashboard, Payments Dashboard and Profile dashboard.
+---END---
+177: I have contributed for code development activity for Dynamic Tiles Services which displays tiles on Card ledger screen and Bank ledger screen.
+---END---
+178: I have created multiple CMP for creating and updating Feature Flags as per the requirement.
+---END---
+179: I have contributed in development activities of other micro services in the project including Customer Engagement Service, SafeMode Service.
+---END---
+180: I have handled the production deployment process where we take care of all the stages. ie from the beginning process of CR creation to deploying services and even monitoring services after production deployment. I have gained good knowledge on Production Deployment Process. | Primary Responsibilities: 
+---END---
+181: 
+---END---
+182: I was part of the team that created API to manage Corporate Customer (Company Customers) for Citi. 
+---END---
+183: I have worked on API creations for service layer of Receivable Invoice for Corporate Customers.
+---END---
+184: I have worked on service layer to create Company Customer Comments.
+---END---
+185: I have worked on Receivable Invoice Disputes and Invoice Transfer service layer.
+---END---
+186: I have worked on creating common service layer to call all the external APIs.
+---END---
+187: I have successfully integrated Swagger to our project.
+---END---
+188: I have worked on creating common Response Model for all the APIs.
+---END---
+189: As this project was developed from scratch I have worked on creating Global Exception Handler and implementing Pagination.
+---END---
+190: 
+---END---
+191: 
+---END---
+192: 
+---END---
+193: 
+---END---
+194: 
+---END---
+195: 2) Wells Fargo Online Payment Services (for NTT DATA )    (Tenure March 2023 to January-2025)
+---END---
+196: 
+---END---
+197: OPS (Online Payment Services) is a payment service platform under Wells Fargo consisting of multiple options Including IFI transfers, Wires Transfers and Zelle. This project deals on various kinds of payment services provided by Wells Fargo. 
+---END---
+198: 
+---END---
+199: 
+---END---
+200: Primary Responsibilities: 
+---END---
+201: 
+---END---
+202: I have worked on multiple layers of OPS (Online Payment Services) for various development activities.
+---END---
+203: I have worked on development activities related to IFI / Wires transfers.
+---END---
+204: I have worked on upgrading multiple JARS as part of JARS upgrade activities.
+---END---
+205: I have worked on providing DB support and releasing SQL scripts for multiple releases. 
+---END---
+206: I have been part of team for upgrading project to JAVA 17 . 
+---END---
+207: I have worked on modifying code and testing multiple batches and even test cases that are part of OPS. 
+---END---
+208: 
+---END---
+209: 
+---END---
+210: 
+---END---
+211: 3) Citi iOS Container Services ( for NTT DATA Services)     ( Tenure January-2025 till Current Date) 
+---END---
+212: 
+---END---
+213: The iOS Container Services is a set of modular microservices designed to provide dynamic personalized content for CITIÆs mobile banking application. The services integrate with various backend systems to drive user-specific interfaces, onboarding tutorials, navigation menus, and personalized offers. The platform also supports feature flag management & dynamic UI configuration.
+---END---
+214: 
+---END---
+215: Primary Responsibilities:   
+---END---
+216: I have worked on multiple services for iOS Container team for various development activities.  
+---END---
+217: I have worked for WhatsNew Service where I was part of multiple development activities including changes in WhatsNew Modal API, Code optimization to reduce Gemfire calls etc.
+---END---
+218: I have contributed to Navigation Service which is used to manage menus and quick link for multiple dashboards including Service Dashboard, Payments Dashboard and Profile dashboard.
+---END---
+219: I have contributed for code development activity for Dynamic Tiles Services which displays tiles on Card ledger screen and Bank ledger screen.
+---END---
+220: I have created multiple CMP for creating and updating Feature Flags as per the requirement.
+---END---
+221: I have contributed in development activities of other micro services in the project including Customer Engagement Service, SafeMode Service.
+---END---
+222: I have handled the production deployment process where we take care of all the stages. ie from the beginning process of CR creation to deploying services and even monitoring services after production deployment. I have gained good knowledge on Production Deployment Process. | Primary Responsibilities: 
+---END---
+223: 
+---END---
+224: I was part of the team that created API to manage Corporate Customer (Company Customers) for Citi. 
+---END---
+225: I have worked on API creations for service layer of Receivable Invoice for Corporate Customers.
+---END---
+226: I have worked on service layer to create Company Customer Comments.
+---END---
+227: I have worked on Receivable Invoice Disputes and Invoice Transfer service layer.
+---END---
+228: I have worked on creating common service layer to call all the external APIs.
+---END---
+229: I have successfully integrated Swagger to our project.
+---END---
+230: I have worked on creating common Response Model for all the APIs.
+---END---
+231: As this project was developed from scratch I have worked on creating Global Exception Handler and implementing Pagination.
+---END---
+232: 
+---END---
+233: 
+---END---
+234: 
+---END---
+235: 
+---END---
+236: 
+---END---
+237: 2) Wells Fargo Online Payment Services (for NTT DATA )    (Tenure March 2023 to January-2025)
+---END---
+238: 
+---END---
+239: OPS (Online Payment Services) is a payment service platform under Wells Fargo consisting of multiple options Including IFI transfers, Wires Transfers and Zelle. This project deals on various kinds of payment services provided by Wells Fargo. 
+---END---
+240: 
+---END---
+241: 
+---END---
+242: Primary Responsibilities: 
+---END---
+243: 
+---END---
+244: I have worked on multiple layers of OPS (Online Payment Services) for various development activities.
+---END---
+245: I have worked on development activities related to IFI / Wires transfers.
+---END---
+246: I have worked on upgrading multiple JARS as part of JARS upgrade activities.
+---END---
+247: I have worked on providing DB support and releasing SQL scripts for multiple releases. 
+---END---
+248: I have been part of team for upgrading project to JAVA 17 . 
+---END---
+249: I have worked on modifying code and testing multiple batches and even test cases that are part of OPS. 
+---END---
+250: 
+---END---
+251: 
+---END---
+252: 
+---END---
+253: 3) Citi iOS Container Services ( for NTT DATA Services)     ( Tenure January-2025 till Current Date) 
+---END---
+254: 
+---END---
+255: The iOS Container Services is a set of modular microservices designed to provide dynamic personalized content for CITIÆs mobile banking application. The services integrate with various backend systems to drive user-specific interfaces, onboarding tutorials, navigation menus, and personalized offers. The platform also supports feature flag management & dynamic UI configuration.
+---END---
+256: 
+---END---
+257: Primary Responsibilities:   
+---END---
+258: I have worked on multiple services for iOS Container team for various development activities.  
+---END---
+259: I have worked for WhatsNew Service where I was part of multiple development activities including changes in WhatsNew Modal API, Code optimization to reduce Gemfire calls etc.
+---END---
+260: I have contributed to Navigation Service which is used to manage menus and quick link for multiple dashboards including Service Dashboard, Payments Dashboard and Profile dashboard.
+---END---
+261: I have contributed for code development activity for Dynamic Tiles Services which displays tiles on Card ledger screen and Bank ledger screen.
+---END---
+262: I have created multiple CMP for creating and updating Feature Flags as per the requirement.
+---END---
+263: I have contributed in development activities of other micro services in the project including Customer Engagement Service, SafeMode Service.
+---END---
+264: I have handled the production deployment process where we take care of all the stages. ie from the beginning process of CR creation to deploying services and even monitoring services after production deployment. I have gained good knowledge on Production Deployment Process.
+---END---
+265: Education
+---END---
+266: Institution: | Gopalan College of Engineering and Management
+---END---
+267: Specialization:          Bachelor of Engineering (Computer Science Engineering)
+---END---
+268: Institution:                 Kendriya Vidyalaya ASC Centre
+---END---
+269: Specialization:          PCMC ( CBSE 12th Standard ) 
+---END---
+270: Institution:                 Kendriya Vidyalaya ASC Centre
+---END---
+271: Specialization:          CBSE 10th Standard 
+---END---
+FILE data\storage\uploads\e3a902d3-49b9-4009-87b6-f328fd3e83bd_Lokesh Kumar Resume.docx
+TOTAL 271
+152: 
+---END---
+153: 2) Wells Fargo Online Payment Services (for NTT DATA )    (Tenure March 2023 to January-2025)
+---END---
+154: 
+---END---
+155: OPS (Online Payment Services) is a payment service platform under Wells Fargo consisting of multiple options Including IFI transfers, Wires Transfers and Zelle. This project deals on various kinds of payment services provided by Wells Fargo. 
+---END---
+156: 
+---END---
+157: 
+---END---
+158: Primary Responsibilities: 
+---END---
+159: 
+---END---
+160: I have worked on multiple layers of OPS (Online Payment Services) for various development activities.
+---END---
+161: I have worked on development activities related to IFI / Wires transfers.
+---END---
+162: I have worked on upgrading multiple JARS as part of JARS upgrade activities.
+---END---
+163: I have worked on providing DB support and releasing SQL scripts for multiple releases. 
+---END---
+164: I have been part of team for upgrading project to JAVA 17 . 
+---END---
+165: I have worked on modifying code and testing multiple batches and even test cases that are part of OPS. 
+---END---
+166: 
+---END---
+167: 
+---END---
+168: 
+---END---
+169: 3) Citi iOS Container Services ( for NTT DATA Services)     ( Tenure January-2025 till Current Date) 
+---END---
+170: 
+---END---
+171: The iOS Container Services is a set of modular microservices designed to provide dynamic personalized content for CITIÆs mobile banking application. The services integrate with various backend systems to drive user-specific interfaces, onboarding tutorials, navigation menus, and personalized offers. The platform also supports feature flag management & dynamic UI configuration.
+---END---
+172: 
+---END---
+173: Primary Responsibilities:   
+---END---
+174: I have worked on multiple services for iOS Container team for various development activities.  
+---END---
+175: I have worked for WhatsNew Service where I was part of multiple development activities including changes in WhatsNew Modal API, Code optimization to reduce Gemfire calls etc.
+---END---
+176: I have contributed to Navigation Service which is used to manage menus and quick link for multiple dashboards including Service Dashboard, Payments Dashboard and Profile dashboard.
+---END---
+177: I have contributed for code development activity for Dynamic Tiles Services which displays tiles on Card ledger screen and Bank ledger screen.
+---END---
+178: I have created multiple CMP for creating and updating Feature Flags as per the requirement.
+---END---
+179: I have contributed in development activities of other micro services in the project including Customer Engagement Service, SafeMode Service.
+---END---
+180: I have handled the production deployment process where we take care of all the stages. ie from the beginning process of CR creation to deploying services and even monitoring services after production deployment. I have gained good knowledge on Production Deployment Process. | Primary Responsibilities: 
+---END---
+181: 
+---END---
+182: I was part of the team that created API to manage Corporate Customer (Company Customers) for Citi. 
+---END---
+183: I have worked on API creations for service layer of Receivable Invoice for Corporate Customers.
+---END---
+184: I have worked on service layer to create Company Customer Comments.
+---END---
+185: I have worked on Receivable Invoice Disputes and Invoice Transfer service layer.
+---END---
+186: I have worked on creating common service layer to call all the external APIs.
+---END---
+187: I have successfully integrated Swagger to our project.
+---END---
+188: I have worked on creating common Response Model for all the APIs.
+---END---
+189: As this project was developed from scratch I have worked on creating Global Exception Handler and implementing Pagination.
+---END---
+190: 
+---END---
+191: 
+---END---
+192: 
+---END---
+193: 
+---END---
+194: 
+---END---
+195: 2) Wells Fargo Online Payment Services (for NTT DATA )    (Tenure March 2023 to January-2025)
+---END---
+196: 
+---END---
+197: OPS (Online Payment Services) is a payment service platform under Wells Fargo consisting of multiple options Including IFI transfers, Wires Transfers and Zelle. This project deals on various kinds of payment services provided by Wells Fargo. 
+---END---
+198: 
+---END---
+199: 
+---END---
+200: Primary Responsibilities: 
+---END---
+201: 
+---END---
+202: I have worked on multiple layers of OPS (Online Payment Services) for various development activities.
+---END---
+203: I have worked on development activities related to IFI / Wires transfers.
+---END---
+204: I have worked on upgrading multiple JARS as part of JARS upgrade activities.
+---END---
+205: I have worked on providing DB support and releasing SQL scripts for multiple releases. 
+---END---
+206: I have been part of team for upgrading project to JAVA 17 . 
+---END---
+207: I have worked on modifying code and testing multiple batches and even test cases that are part of OPS. 
+---END---
+208: 
+---END---
+209: 
+---END---
+210: 
+---END---
+211: 3) Citi iOS Container Services ( for NTT DATA Services)     ( Tenure January-2025 till Current Date) 
+---END---
+212: 
+---END---
+213: The iOS Container Services is a set of modular microservices designed to provide dynamic personalized content for CITIÆs mobile banking application. The services integrate with various backend systems to drive user-specific interfaces, onboarding tutorials, navigation menus, and personalized offers. The platform also supports feature flag management & dynamic UI configuration.
+---END---
+214: 
+---END---
+215: Primary Responsibilities:   
+---END---
+216: I have worked on multiple services for iOS Container team for various development activities.  
+---END---
+217: I have worked for WhatsNew Service where I was part of multiple development activities including changes in WhatsNew Modal API, Code optimization to reduce Gemfire calls etc.
+---END---
+218: I have contributed to Navigation Service which is used to manage menus and quick link for multiple dashboards including Service Dashboard, Payments Dashboard and Profile dashboard.
+---END---
+219: I have contributed for code development activity for Dynamic Tiles Services which displays tiles on Card ledger screen and Bank ledger screen.
+---END---
+220: I have created multiple CMP for creating and updating Feature Flags as per the requirement.
+---END---
+221: I have contributed in development activities of other micro services in the project including Customer Engagement Service, SafeMode Service.
+---END---
+222: I have handled the production deployment process where we take care of all the stages. ie from the beginning process of CR creation to deploying services and even monitoring services after production deployment. I have gained good knowledge on Production Deployment Process. | Primary Responsibilities: 
+---END---
+223: 
+---END---
+224: I was part of the team that created API to manage Corporate Customer (Company Customers) for Citi. 
+---END---
+225: I have worked on API creations for service layer of Receivable Invoice for Corporate Customers.
+---END---
+226: I have worked on service layer to create Company Customer Comments.
+---END---
+227: I have worked on Receivable Invoice Disputes and Invoice Transfer service layer.
+---END---
+228: I have worked on creating common service layer to call all the external APIs.
+---END---
+229: I have successfully integrated Swagger to our project.
+---END---
+230: I have worked on creating common Response Model for all the APIs.
+---END---
+231: As this project was developed from scratch I have worked on creating Global Exception Handler and implementing Pagination.
+---END---
+232: 
+---END---
+233: 
+---END---
+234: 
+---END---
+235: 
+---END---
+236: 
+---END---
+237: 2) Wells Fargo Online Payment Services (for NTT DATA )    (Tenure March 2023 to January-2025)
+---END---
+238: 
+---END---
+239: OPS (Online Payment Services) is a payment service platform under Wells Fargo consisting of multiple options Including IFI transfers, Wires Transfers and Zelle. This project deals on various kinds of payment services provided by Wells Fargo. 
+---END---
+240: 
+---END---
+241: 
+---END---
+242: Primary Responsibilities: 
+---END---
+243: 
+---END---
+244: I have worked on multiple layers of OPS (Online Payment Services) for various development activities.
+---END---
+245: I have worked on development activities related to IFI / Wires transfers.
+---END---
+246: I have worked on upgrading multiple JARS as part of JARS upgrade activities.
+---END---
+247: I have worked on providing DB support and releasing SQL scripts for multiple releases. 
+---END---
+248: I have been part of team for upgrading project to JAVA 17 . 
+---END---
+249: I have worked on modifying code and testing multiple batches and even test cases that are part of OPS. 
+---END---
+250: 
+---END---
+251: 
+---END---
+252: 
+---END---
+253: 3) Citi iOS Container Services ( for NTT DATA Services)     ( Tenure January-2025 till Current Date) 
+---END---
+254: 
+---END---
+255: The iOS Container Services is a set of modular microservices designed to provide dynamic personalized content for CITIÆs mobile banking application. The services integrate with various backend systems to drive user-specific interfaces, onboarding tutorials, navigation menus, and personalized offers. The platform also supports feature flag management & dynamic UI configuration.
+---END---
+256: 
+---END---
+257: Primary Responsibilities:   
+---END---
+258: I have worked on multiple services for iOS Container team for various development activities.  
+---END---
+259: I have worked for WhatsNew Service where I was part of multiple development activities including changes in WhatsNew Modal API, Code optimization to reduce Gemfire calls etc.
+---END---
+260: I have contributed to Navigation Service which is used to manage menus and quick link for multiple dashboards including Service Dashboard, Payments Dashboard and Profile dashboard.
+---END---
+261: I have contributed for code development activity for Dynamic Tiles Services which displays tiles on Card ledger screen and Bank ledger screen.
+---END---
+262: I have created multiple CMP for creating and updating Feature Flags as per the requirement.
+---END---
+263: I have contributed in development activities of other micro services in the project including Customer Engagement Service, SafeMode Service.
+---END---
+264: I have handled the production deployment process where we take care of all the stages. ie from the beginning process of CR creation to deploying services and even monitoring services after production deployment. I have gained good knowledge on Production Deployment Process.
+---END---
+265: Education
+---END---
+266: Institution: | Gopalan College of Engineering and Management
+---END---
+267: Specialization:          Bachelor of Engineering (Computer Science Engineering)
+---END---
+268: Institution:                 Kendriya Vidyalaya ASC Centre
+---END---
+269: Specialization:          PCMC ( CBSE 12th Standard ) 
+---END---
+270: Institution:                 Kendriya Vidyalaya ASC Centre
+---END---
+271: Specialization:          CBSE 10th Standard 
+---END---

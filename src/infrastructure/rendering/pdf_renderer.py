@@ -2,6 +2,7 @@ from io import BytesIO
 from typing import Dict, Any
 import tempfile
 import os
+from pathlib import Path
 
 from src.core.logging.logger import get_logger
 
@@ -9,7 +10,7 @@ try:
     from reportlab.lib.pagesizes import A4
     from reportlab.pdfgen import canvas
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
     from reportlab.lib.units import inch
 except ImportError:
     # Fallback for environments where reportlab is not available
@@ -111,9 +112,10 @@ class PdfRenderer:
         """Render PDF from HTML template"""
         html_content = self._generate_html_template(context)
         css_content = self._generate_ntt_css()
+        base_url = str(Path(__file__).resolve().parents[3])
         
         # Convert HTML to PDF
-        html_doc = HTML(string=html_content)
+        html_doc = HTML(string=html_content, base_url=base_url)
         css_doc = CSS(string=css_content)
         
         pdf_bytes = html_doc.write_pdf(stylesheets=[css_doc])
@@ -121,6 +123,11 @@ class PdfRenderer:
 
     def _generate_html_template(self, context: Dict[str, Any]) -> str:
         """Generate HTML template with NTT DATA styling"""
+        logo_src = self._resolve_logo_web_path()
+        logo_html = ""
+        if logo_src:
+            logo_html = f'<img class="ntt-logo" src="{logo_src}" alt="NTT DATA" />'
+
         html = f"""
         <!DOCTYPE html>
         <html>
@@ -130,6 +137,7 @@ class PdfRenderer:
         </head>
         <body>
             <header class="ntt-header">
+                {logo_html}
                 <h1>NTT DATA</h1>
                 <div class="cv-title">Professional CV</div>
             </header>
@@ -180,6 +188,13 @@ class PdfRenderer:
             border-bottom: 2px solid #0066cc;
             margin-bottom: 20px;
             padding-bottom: 10px;
+        }
+
+        .ntt-logo {
+            display: block;
+            margin: 0 auto 8px auto;
+            max-height: 42px;
+            width: auto;
         }
         
         .ntt-header h1 {
@@ -268,7 +283,7 @@ class PdfRenderer:
 
     def _generate_section_html(self, title: str, key: str, context: Dict[str, Any]) -> str:
         """Generate a standard section HTML"""
-        content = context.get(key, "")
+        content = self._normalize_section_content(context.get(key, ""))
         if not content:
             return ""
         
@@ -362,6 +377,14 @@ class PdfRenderer:
         story = []
         
         # Header
+        logo_path = self._resolve_logo_file_path()
+        if logo_path and 'Image' in globals():
+            try:
+                story.append(Image(str(logo_path), width=1.8 * inch, height=0.45 * inch))
+                story.append(Spacer(1, 0.08 * inch))
+            except Exception as e:
+                print(f"Warning: Could not render logo in direct PDF path: {e}")
+
         story.append(Paragraph("NTT DATA", ntt_title_style))
         story.append(Paragraph("Professional CV", styles['Title']))
         story.append(Spacer(1, 0.2*inch))
@@ -385,10 +408,10 @@ class PdfRenderer:
         ]
         
         for title, key in sections:
-            content = context.get(key, "")
+            content = self._normalize_section_content(context.get(key, ""))
             if content:
                 story.append(Paragraph(title, ntt_heading_style))
-                story.append(Paragraph(str(content), styles['Normal']))
+                story.append(Paragraph(content, styles['Normal']))
                 story.append(Spacer(1, 0.1*inch))
         
         # Build PDF
@@ -463,12 +486,68 @@ class PdfRenderer:
         ]
         
         for section_title, key in content_sections:
-            content = context.get(key, "")
+            content = self._normalize_section_content(context.get(key, ""))
             if content:
                 lines.append(f"{section_title}:")
-                lines.append(str(content))
+                lines.append(content)
                 lines.append("")
         
         # Convert to bytes (simplified fallback)
         content_str = "\n".join(lines)
         return content_str.encode('utf-8')
+
+    @staticmethod
+    def _resolve_logo_file_path() -> Path | None:
+        """Resolve the best-available NTT DATA logo path from repository assets."""
+        repo_root = Path(__file__).resolve().parents[3]
+        candidates = [
+            repo_root / "web-ui" / "static" / "img" / "nttdata_header.png",
+            repo_root / "web-ui" / "static" / "img" / "nttdata_logo.png",
+            repo_root / "config" / "nttdata_logo.png",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return None
+
+    @classmethod
+    def _resolve_logo_web_path(cls) -> str:
+        """Resolve logo path usable in HTML templates."""
+        logo_path = cls._resolve_logo_file_path()
+        if logo_path is None:
+            return ""
+
+        repo_root = Path(__file__).resolve().parents[3]
+        try:
+            rel = logo_path.relative_to(repo_root)
+            return str(rel).replace("\\", "/")
+        except ValueError:
+            return logo_path.as_uri()
+
+    @staticmethod
+    def _normalize_section_content(content: Any) -> str:
+        """Normalize structured/list content for PDF text rendering."""
+        if content is None:
+            return ""
+
+        if isinstance(content, str):
+            return content.strip()
+
+        if isinstance(content, list):
+            lines = []
+            for item in content:
+                normalized = PdfRenderer._normalize_section_content(item)
+                if normalized:
+                    lines.append(f"- {normalized}")
+            return "<br/>".join(lines)
+
+        if isinstance(content, dict):
+            lines = []
+            for key, value in content.items():
+                normalized = PdfRenderer._normalize_section_content(value)
+                if normalized:
+                    label = str(key).replace("_", " ").title()
+                    lines.append(f"<b>{label}:</b> {normalized}")
+            return "<br/>".join(lines)
+
+        return str(content).strip()

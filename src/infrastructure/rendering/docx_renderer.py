@@ -8,6 +8,7 @@ from src.core.logging.logger import get_logger
 try:
     from docx import Document
     from docx.shared import Inches
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 except ImportError:
     # Fallback for environments where python-docx is not available
     Document = None
@@ -141,6 +142,9 @@ class DocxRenderer:
             else:
                 # Create from scratch if template not found
                 doc = self._create_template_structure(context)
+
+            # Enforce export header/footer formatting across templates.
+            self._apply_export_header_footer(doc)
             
             # Save to bytes
             buffer = BytesIO()
@@ -152,6 +156,110 @@ class DocxRenderer:
             # Fallback to programmatic generation on any error
             print(f"Warning: Template rendering failed ({e}), using fallback")
             return self._render_fallback(context)
+
+    def _apply_export_header_footer(self, doc: Document) -> None:
+        """Apply standardized header/footer formatting to all sections."""
+        if Document is None:
+            return
+
+        try:
+            logo_path = self._resolve_header_logo_path()
+
+            for section in doc.sections:
+                # Header logo: always left aligned.
+                self._format_header_with_logo(section.header, logo_path)
+
+                first_page_header = getattr(section, "first_page_header", None)
+                if first_page_header is not None:
+                    self._format_header_with_logo(first_page_header, logo_path)
+
+                even_page_header = getattr(section, "even_page_header", None)
+                if even_page_header is not None:
+                    self._format_header_with_logo(even_page_header, logo_path)
+
+                # Footer page numbering: right aligned dynamic fields.
+                self._format_footer_with_page_numbers(section.footer)
+
+                first_page_footer = getattr(section, "first_page_footer", None)
+                if first_page_footer is not None:
+                    self._format_footer_with_page_numbers(first_page_footer)
+
+                even_page_footer = getattr(section, "even_page_footer", None)
+                if even_page_footer is not None:
+                    self._format_footer_with_page_numbers(even_page_footer)
+        except Exception as e:
+            print(f"Warning: Could not apply export header/footer formatting: {e}")
+
+    @staticmethod
+    def _resolve_header_logo_path() -> Path | None:
+        """Resolve the export header logo path relative to repository root."""
+        repo_root = Path(__file__).resolve().parents[3]
+        logo_path = repo_root / "web-ui" / "static" / "img" / "nttdata_header.png"
+        return logo_path if logo_path.exists() else None
+
+    def _format_header_with_logo(self, header, logo_path: Path | None) -> None:
+        """Place logo in header, left-aligned."""
+        paragraph = header.paragraphs[0] if header.paragraphs else header.add_paragraph()
+
+        # Clear existing runs so old text/logo doesn't overlap.
+        for run in list(paragraph.runs):
+            run.text = ""
+
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
+        if logo_path is None:
+            return
+
+        try:
+            run = paragraph.add_run()
+            run.add_picture(str(logo_path), width=Inches(1.9))
+        except Exception as e:
+            print(f"Warning: Failed to place header logo '{logo_path}': {e}")
+
+    def _format_footer_with_page_numbers(self, footer) -> None:
+        """Ensure footer has right-aligned dynamic page numbers."""
+        paragraph = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+
+        # Remove existing static footer text/runs and rebuild.
+        p_element = paragraph._p
+        for child in list(p_element):
+            p_element.remove(child)
+
+        paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+        paragraph.add_run("Page ")
+        self._append_field(paragraph, "PAGE")
+        paragraph.add_run(" of ")
+        self._append_field(paragraph, "NUMPAGES")
+
+    @staticmethod
+    def _append_field(paragraph, instruction: str) -> None:
+        """Append a dynamic Word field (e.g., PAGE, NUMPAGES) to a paragraph."""
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        run = paragraph.add_run()
+
+        fld_begin = OxmlElement("w:fldChar")
+        fld_begin.set(qn("w:fldCharType"), "begin")
+        run._r.append(fld_begin)
+
+        instr_text = OxmlElement("w:instrText")
+        instr_text.set(qn("xml:space"), "preserve")
+        instr_text.text = f" {instruction} "
+        run._r.append(instr_text)
+
+        fld_separate = OxmlElement("w:fldChar")
+        fld_separate.set(qn("w:fldCharType"), "separate")
+        run._r.append(fld_separate)
+
+        fallback_text = OxmlElement("w:t")
+        fallback_text.text = "1"
+        run._r.append(fallback_text)
+
+        fld_end = OxmlElement("w:fldChar")
+        fld_end.set(qn("w:fldCharType"), "end")
+        run._r.append(fld_end)
 
     def render_to_file(self, context: Dict[str, Any], output_path: str) -> None:
         """Render CV to a file"""
@@ -248,13 +356,16 @@ class DocxRenderer:
         
         # Pattern 4: Experience Summary - Add content after the header
         if full_text.strip() == "Experience Summary" and context.get("summary"):
-            # Clear the paragraph and add the header with summary content
             paragraph.clear()
-            # Add the header
             header_run = paragraph.add_run("Experience Summary")
             header_run.bold = True
-            # Add line break and summary content
-            paragraph.add_run("\n\n" + str(context["summary"]))
+
+            summary_lines = self._split_summary_lines(context.get("summary"))
+            if len(summary_lines) <= 1:
+                paragraph.add_run("\n\n" + str(context["summary"]))
+            else:
+                for line in summary_lines:
+                    paragraph.add_run("\n• " + line)
             replaced = True
             return  # Early return since we've manually handled this paragraph
         
@@ -622,7 +733,15 @@ class DocxRenderer:
         # Professional Summary
         if context.get("summary"):
             doc.add_heading("Professional Summary", level=2)
-            doc.add_paragraph(context.get("summary"))
+            summary_lines = self._split_summary_lines(context.get("summary"))
+            if len(summary_lines) <= 1:
+                doc.add_paragraph(context.get("summary"))
+            else:
+                for line in summary_lines:
+                    try:
+                        doc.add_paragraph(line, style='List Bullet')
+                    except Exception:
+                        doc.add_paragraph(f"• {line}")
         
         # Skills sections
         self._add_skills_sections(doc, context)
@@ -2197,6 +2316,28 @@ class DocxRenderer:
             print(f"Error replacing certification table: {e}")
             return False
 
+    def _split_summary_lines(self, summary_value: Any) -> list:
+        raw = str(summary_value or "").replace("\r\n", "\n").strip()
+        if not raw:
+            return []
+
+        normalized = re.sub(r"[\u2022\u25E6\u25AA\u25CF\u25C6\u25BA\uF076]", "\n• ", raw)
+        lines = [line.strip() for line in normalized.split("\n") if line.strip()]
+
+        if len(lines) == 1:
+            single = lines[0]
+            single = re.sub(r"\s+([a-zA-Z]\.)\s+", r"\n\1 ", single)
+            single = re.sub(r"\s+(\d+\.)\s+", r"\n\1 ", single)
+            lines = [line.strip() for line in single.split("\n") if line.strip()]
+
+        cleaned = []
+        for line in lines:
+            cleaned_line = re.sub(r"^([\-*\u2022•]|\d+[.)]|[a-zA-Z][.)])\s+", "", line).strip()
+            if cleaned_line:
+                cleaned.append(cleaned_line)
+
+        return cleaned
+
     def _render_fallback(self, context: Dict[str, Any]) -> bytes:
         # Create a simple text-based document representation
         lines = []
@@ -2243,7 +2384,15 @@ class DocxRenderer:
             content = context.get(key, "")
             if content:
                 lines.append(f"{section_title}:")
-                lines.append(str(content))
+                if key == "summary":
+                    summary_lines = self._split_summary_lines(content)
+                    if len(summary_lines) > 1:
+                        for line in summary_lines:
+                            lines.append(f"- {line}")
+                    else:
+                        lines.append(str(content))
+                else:
+                    lines.append(str(content))
                 lines.append("")
         
         # Convert to bytes (simplified fallback)

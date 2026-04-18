@@ -16,6 +16,7 @@ from src.core.constants import (
     WWW_AUTHENTICATE_BEARER,
     WWW_AUTHENTICATE_HEADER,
 )
+from src.core.security.auth_context import get_auth_context
 from src.core.security.current_user import CurrentUser
 from src.core.security.oauth2 import oauth2_scheme
 from src.core.security.permissions import Permission
@@ -44,6 +45,26 @@ def get_current_user(
             email=DEV_EMAIL,
             full_name=DEV_FULL_NAME,
             role=Role.ADMIN,
+        )
+
+    auth_user = get_auth_context()
+    if auth_user is not None:
+        repo = AuthRepository(db)
+        user = repo.get_by_id(auth_user.user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=ERR_USER_NOT_FOUND_OR_INACTIVE,
+                headers={WWW_AUTHENTICATE_HEADER: WWW_AUTHENTICATE_BEARER},
+            )
+
+        return CurrentUser(
+            user_id=user.id,
+            username=user.username,
+            email=user.email,
+            full_name=user.full_name,
+            role=user.role,
+            is_active=user.is_active,
         )
 
     if not token:

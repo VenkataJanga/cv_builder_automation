@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from src.application.services.conversation_service import ConversationService
+from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.domain.cv.services.merge_cv import MergeCVService
 from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 
@@ -9,6 +10,27 @@ router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(get_curr
 
 conversation_service = ConversationService()
 merge_service = MergeCVService()
+transaction_logging_service = get_transaction_logging_service()
+
+
+def _log_conversation_event(
+    operation: str,
+    status: str,
+    session_id: str | None = None,
+    http_status: int | None = None,
+    error_message: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    transaction_logging_service.log_transaction(
+        module_name="conversation",
+        operation=operation,
+        status=status,
+        session_id=session_id,
+        source_channel="bot_conversation",
+        http_status=http_status,
+        error_message=error_message,
+        payload=payload,
+    )
 
 
 class ChatRequest(BaseModel):
@@ -26,6 +48,12 @@ async def chat(request: ChatRequest):
         if not request.session_id or request.session_id == "default-session":
             session = conversation_service.start_session()
             session_id = session.get("session_id")
+            _log_conversation_event(
+                operation="chat_start_session",
+                status="success",
+                session_id=session_id,
+                http_status=200,
+            )
             return {
                 "bot": session.get("question"),
                 "session_id": session_id,
@@ -38,6 +66,13 @@ async def chat(request: ChatRequest):
         if "error" in session:
             session = conversation_service.start_session()
             session_id = session.get("session_id")
+            _log_conversation_event(
+                operation="chat_session_recover",
+                status="success",
+                session_id=session_id,
+                http_status=200,
+                payload={"reason": "invalid_session_id", "provided_session_id": request.session_id},
+            )
             return {
                 "bot": session.get("question"),
                 "session_id": session_id,
@@ -53,6 +88,12 @@ async def chat(request: ChatRequest):
             bot_text = "I understand. Let me help you build your CV. Can you tell me more details?"
 
         updated_session = conversation_service.get_session(session_id)
+        _log_conversation_event(
+            operation="chat_submit_answer",
+            status="success",
+            session_id=session_id,
+            http_status=200,
+        )
         
         return {
             "bot": bot_text,
@@ -62,6 +103,13 @@ async def chat(request: ChatRequest):
         }
         
     except Exception as e:
+        _log_conversation_event(
+            operation="chat_submit_answer",
+            status="failed",
+            session_id=request.session_id,
+            http_status=500,
+            error_message=str(e),
+        )
         return {
             "bot": f"I encountered an error: {str(e)}. Please try again.",
             "session_id": request.session_id,
@@ -77,6 +125,12 @@ async def create_conversation_session(request: dict = None):
     """
     try:
         session = conversation_service.start_session()
+        _log_conversation_event(
+            operation="conversation_create_session",
+            status="success",
+            session_id=session.get("session_id"),
+            http_status=200,
+        )
         return {
             "session_id": session.get("session_id"),
             "status": "success",
@@ -85,6 +139,12 @@ async def create_conversation_session(request: dict = None):
             "cv_data": session.get("cv_data", {}),
         }
     except Exception as e:
+        _log_conversation_event(
+            operation="conversation_create_session",
+            status="failed",
+            http_status=500,
+            error_message=str(e),
+        )
         return {
             "status": "error",
             "message": f"Failed to create session: {str(e)}"
@@ -99,10 +159,23 @@ async def get_conversation_session(session_id: str):
     try:
         session = conversation_service.get_session(session_id)
         if "error" in session:
+            _log_conversation_event(
+                operation="conversation_get_session",
+                status="failed",
+                session_id=session_id,
+                http_status=404,
+                error_message="Session not found",
+            )
             return {
                 "status": "error",
                 "message": "Session not found"
             }
+        _log_conversation_event(
+            operation="conversation_get_session",
+            status="success",
+            session_id=session_id,
+            http_status=200,
+        )
         
         return {
             "session_id": session_id,
@@ -110,6 +183,13 @@ async def get_conversation_session(session_id: str):
             "status": "success"
         }
     except Exception as e:
+        _log_conversation_event(
+            operation="conversation_get_session",
+            status="failed",
+            session_id=session_id,
+            http_status=500,
+            error_message=str(e),
+        )
         return {
             "status": "error", 
             "message": f"Failed to get session: {str(e)}"

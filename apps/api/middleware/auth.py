@@ -35,25 +35,29 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         set_auth_context(None)  # reset per-request
 
-        if request.url.path in PUBLIC_PATHS:
-          return await call_next(request)
+        if any(
+            request.url.path == public_path
+            or request.url.path.startswith(f"{public_path}/")
+            for public_path in PUBLIC_PATHS
+        ):
+            return await call_next(request)
 
         auth_header: str = request.headers.get(AUTH_HEADER_NAME, "")
         if auth_header.startswith(AUTH_HEADER_PREFIX):
-          token = auth_header.removeprefix(AUTH_HEADER_PREFIX).strip()
-          try:
-            payload = decode_access_token(token)
-            user = CurrentUser(
-              user_id=payload[JWT_USER_ID_CLAIM],
-              username=payload[JWT_SUB_CLAIM],
-              email=payload.get(JWT_EMAIL_CLAIM, ""),
-              full_name=payload.get(JWT_FULL_NAME_CLAIM),
-              role=Role(payload.get(JWT_ROLE_CLAIM, Role.USER.value)),
-            )
-            set_auth_context(user)
-          except Exception:
-            # Invalid / expired token — context stays None
-            pass
+            token = auth_header.removeprefix(AUTH_HEADER_PREFIX).strip()
+            try:
+                payload = decode_access_token(token)
+                user = CurrentUser(
+                    user_id=payload[JWT_USER_ID_CLAIM],
+                    username=payload[JWT_SUB_CLAIM],
+                    email=payload.get(JWT_EMAIL_CLAIM, ""),
+                    full_name=payload.get(JWT_FULL_NAME_CLAIM),
+                    role=Role(payload.get(JWT_ROLE_CLAIM, Role.USER.value)),
+                )
+                set_auth_context(user)
+            except Exception:
+                # Invalid / expired token — context stays None
+                pass
 
         return await call_next(request)
 

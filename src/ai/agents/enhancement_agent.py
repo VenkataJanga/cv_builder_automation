@@ -72,6 +72,92 @@ Professional text (respond with ONLY the enhanced text, no explanations):"""
             print(f"LLM enhancement failed: {e}. Using fallback.")
             return self._basic_cleanup(text)
 
+    def structure_cv_transcript(self, text: str) -> str:
+        """
+        Transform a voice transcript into a structured CV document.
+
+        Unlike professionalize_transcript_text() which produces free-form prose,
+        this method outputs structured markdown sections that CanonicalAudioParser
+        can reliably extract every CV field from.
+
+        The output uses the exact section headers and inline labels the downstream
+        parser (canonical_audio_parser._extract_markdown_projects et al.) recognises.
+        """
+        text = (text or "").strip()
+        if not text or len(text) < 10:
+            return text
+
+        prompt = f"""You are a CV structuring expert. Transform the voice transcript below into a structured CV document.
+
+CRITICAL: Follow this EXACT format — the downstream CV system depends on it:
+
+**[Full Name]**
+Portal ID: [Employee ID / Portal ID]
+Current Role: [Job Title] at [Company Name]
+Location: [City, Country]
+Email: [email address]
+Contact: [phone number]
+Experience: [N] years
+
+**Professional Summary**
+[2-3 sentence professional summary preserving all factual details]
+
+**Primary Skills:** skill1, skill2, skill3
+**Secondary Skills:** skill1, skill2
+
+**Project Experience**
+**[First Project Name]**
+**Client:** [Client Name]
+**Project Description:** [What the project does / its purpose]
+**Responsibilities:** [First specific responsibility.]
+**Responsibilities:** [Second specific responsibility.]
+**Technologies:** tech1, tech2, tech3
+
+**Project Experience**
+**[Second Project Name]**
+**Client:** [Client Name]
+**Project Description:** [What the project does / its purpose]
+**Responsibilities:** [Responsibility.]
+**Technologies:** tech1, tech2
+
+**Education**
+- [Degree], [Specialization], [Institution], [University], [Year], [Percentage or GPA]
+
+**Certifications**
+- [Certification Name], [Issuing Organization], [Year]
+
+**Domain Expertise:** domain1, domain2, domain3
+
+RULES:
+1. Capture EVERY detail the speaker mentions — never discard information
+2. Each project MUST start on its own **Project Experience** header line (repeat the header)
+3. Put each responsibility on its own **Responsibilities:** line
+4. Use comma-separated values for skills, technologies, and domains
+5. If the speaker mentions Portal ID, Employee ID, Contact Number, GPA, CGPA, Grade, Percentage, or Percentile, you MUST preserve it explicitly in the structured output
+6. For every education entry, include the score exactly as stated using Percentage or GPA in the final slot
+7. Omit lines whose value was not mentioned (do NOT write N/A, Unknown, or None)
+8. Fix grammar and spelling but preserve all factual content exactly
+9. Project descriptions must explain WHAT the project does, not just repeat its name
+10. Output ONLY the structured CV text — no commentary, no explanations
+
+Voice Transcript:
+{text}
+
+Structured CV:"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.LLM_ENHANCEMENT_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=3000,
+            )
+            structured = response.choices[0].message.content.strip()
+            return structured if structured else self._basic_cleanup(text)
+        except Exception as e:
+            print(f"CV structuring failed: {e}. Using basic cleanup fallback.")
+            return self._basic_cleanup(text)
+
     def enhance_summary_text(self, text: str, role: str = None) -> str:
         """
         Enhance professional summary text for CV.

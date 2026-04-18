@@ -6,10 +6,13 @@ All preview operations read from canonical_cv only.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from src.ai.agents.cv_formatting_agent import CVFormattingAgent
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
+from src.domain.cv.services.canonical_data_staging_service import (
+    CanonicalDataStagingService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +21,10 @@ _INVALID_LOCATION_VALUES = {
     "na",
     "n/a",
     "none",
+    "none, none",
+    "none, none, none",
     "null",
+    "undefined",
     "nil",
     "unknown",
     "not available",
@@ -48,6 +54,7 @@ class PreviewService:
     
     def __init__(self) -> None:
         self.formatter = CVFormattingAgent()
+        self.staging_service = CanonicalDataStagingService()
         self.logger = logging.getLogger(__name__)
     
     def build_preview_from_canonical(self, canonical_data: Dict[str, Any]) -> dict:
@@ -117,6 +124,42 @@ class PreviewService:
             self.logger.error(f"Error building CV preview from canonical schema: {str(e)}", exc_info=True)
             raise
     
+    def build_preview_from_staging(
+        self, 
+        session_id: str,
+        extraction_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Build CV preview from staged extraction data.
+        
+        Retrieves canonical CV from persistent staging layer and generates preview.
+        Marks extraction as previewed in staging for audit trail.
+        
+        Args:
+            session_id: User session ID
+            extraction_id: Optional specific extraction to use (latest if not provided)
+            
+        Returns:
+            Formatted CV preview data
+            
+        Raises:
+            ValueError: If no staged extraction found
+        """
+        canonical_cv = self.staging_service.get_canonical_cv_from_staging(
+            session_id=session_id, extraction_id=extraction_id
+        )
+        
+        if not canonical_cv:
+            self.logger.error(f"No staged extraction found for session {session_id}")
+            raise ValueError(f"No staged extraction found for session {session_id}")
+        
+        # Mark as previewed if extraction_id is known
+        if extraction_id:
+            self.staging_service.mark_previewed(extraction_id)
+        
+        # Build preview from canonical
+        return self.build_preview_from_canonical(canonical_cv)
+    
     def _convert_canonical_to_formatter_format(self, canonical_data: CanonicalCVSchema) -> dict:
         """
         Convert canonical schema to format expected by CV formatter
@@ -130,58 +173,96 @@ class PreviewService:
         try:
             canonical_dict = canonical_data if isinstance(canonical_data, dict) else canonical_data.model_dump()
             candidate = self._to_dict(canonical_dict.get("candidate", {}))
+            candidate_personal_info = self._to_dict(
+                candidate.get("personalInfo") or
+                candidate.get("personal_info") or
+                candidate.get("personalDetails") or
+                {}
+            )
             skills = self._to_dict(canonical_dict.get("skills", {}))
             experience = self._to_dict(canonical_dict.get("experience", {}))
             personal_details = self._to_dict(canonical_dict.get("personalDetails", {}))
-            
-            candidate_location = candidate.get("currentLocation") or candidate.get("location") or {}
-            candidate_email = candidate.get("email") or candidate.get("emailAddress") or candidate.get("email_address") or ""
+
+            def candidate_field(*keys):
+                for key in keys:
+                    value = candidate.get(key)
+                    if value not in [None, ""]:
+                        return value
+                    value = candidate_personal_info.get(key)
+                    if value not in [None, ""]:
+                        return value
+                return None
+
+            candidate_location = self._to_dict(
+                candidate_field("currentLocation", "location", "current_location") or {}
+            )
+            candidate_email = (
+                candidate_field("email", "emailAddress", "email_address") or ""
+            )
             candidate_portal_id = (
-                candidate.get("portalId") or candidate.get("portal_id") or candidate.get("employee_id") or ""
+                candidate_field("portalId", "portal_id", "employee_id", "portal_id", "employeeId") or ""
             )
             current_title = self._sanitize_current_title(
-                candidate.get("currentDesignation") or candidate.get("designation") or ""
+                candidate_field("currentDesignation", "designation", "currentRole", "current_role", "title") or ""
+            )
+            total_experience = candidate_field(
+                "totalExperienceYears",
+                "yearsOfExperience",
+                "total_experience",
+                "experienceYears"
+            )
+            total_experience_str = (
+                f"{total_experience} years" if isinstance(total_experience, (int, float)) else str(total_experience or "")
             )
             domain_expertise = self._extract_domain_expertise(experience, skills, canonical_dict)
             summary_text = (
-                candidate.get("summary") or
+                candidate_field("summary", "professionalSummary", "careerObjective", "career_objective") or
                 canonical_dict.get("summary") or
-                candidate.get("careerObjective") or
-                self._build_summary_fallback(candidate)
+                self._build_summary_fallback(candidate) or
+                self._build_summary_fallback(candidate_personal_info)
             )
+
+            if not summary_text:
+                summary_text = self._build_summary_fallback({
+                    "designation": candidate_field("currentDesignation", "designation", "currentRole", "current_role", "title"),
+                    "totalExperienceYears": total_experience,
+                    "currentOrganization": candidate_field("currentOrganization", "current_organization", "organization"),
+                })
             
             # Build formatter-compatible structure
             formatted_data = {
                 # Header information
                 "header": {
-                    "full_name": candidate.get("fullName", ""),
+                    "full_name": candidate_field("fullName", "firstName", "name", "full_name") or "",
                     "current_title": current_title,
                     "location": self._format_location(candidate_location),
-                    "current_organization": candidate.get("currentOrganization", ""),
-                    "total_experience": f"{candidate.get('totalExperienceYears')} years" if candidate.get("totalExperienceYears") else "",
+                    "current_organization": candidate_field("currentOrganization", "current_organization", "organization") or "",
+                    "total_experience": total_experience_str,
                     "email": candidate_email,
-                    "contact_number": candidate.get("phoneNumber", ""),
+                    "contact_number": candidate_field("phoneNumber", "phone", "contact_number") or "",
                     "employee_id": candidate_portal_id,
                     "portal_id": candidate_portal_id,
-                    "phone": candidate.get("phoneNumber", "")
+                    "phone": candidate_field("phoneNumber", "phone", "contact_number") or "",
+                    "grade": candidate_field("currentGrade", "grade") or ""
                 },
                 
                 # Personal details
                 "personal_details": {
-                    "full_name": candidate.get("fullName", ""),
+                    "full_name": candidate_field("fullName", "firstName", "name", "full_name") or "",
                     "current_title": current_title,
-                    "total_experience": float(candidate.get("totalExperienceYears")) if candidate.get("totalExperienceYears") else 0.0,
-                    "current_organization": candidate.get("currentOrganization", ""),
+                    "total_experience": float(total_experience) if isinstance(total_experience, (int, float)) else (float(total_experience) if str(total_experience).isdigit() else 0.0),
+                    "current_organization": candidate_field("currentOrganization", "current_organization", "organization") or "",
                     "location": self._format_location(candidate_location) or personal_details.get("location", ""),
                     "email": candidate_email,
-                    "phone": candidate.get("phoneNumber", ""),
-                    "linkedin": personal_details.get("linkedinUrl", "")
+                    "phone": candidate_field("phoneNumber", "phone", "contact_number") or "",
+                    "linkedin": personal_details.get("linkedinUrl", "") or candidate_field("linkedIn", "linkedinUrl", "linkedin") or "",
+                    "grade": candidate_field("currentGrade", "grade") or ""
                 },
                 
                 # Summary
                 "summary": {
                     "professional_summary": summary_text,
-                    "target_role": candidate.get("careerObjective", "")
+                    "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or ""
                 },
                 
                 # Skills
@@ -203,8 +284,8 @@ class PreviewService:
                 
                 # Experience
                 "employment": {
-                    "current_employer": candidate.get("currentOrganization", ""),
-                    "total_experience": f"{candidate.get('totalExperienceYears')} years" if candidate.get("totalExperienceYears") else ""
+                    "current_employer": candidate_field("currentOrganization", "current_organization", "organization") or "",
+                    "total_experience": total_experience_str
                 },
                 
                 # Projects
@@ -220,8 +301,8 @@ class PreviewService:
                 "languages": self._to_list(personal_details.get("languagesKnown")),
                 
                 # Metadata
-                "schema_version": canonical_dict.get("schema_version", ""),
-                "target_role": candidate.get("careerObjective", "")
+                "schema_version": canonical_dict.get("schema_version", "") or canonical_dict.get("schemaVersion", ""),
+                "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or ""
             }
             
             return formatted_data
@@ -363,7 +444,7 @@ class PreviewService:
     def _format_location(self, location):
         location_dict = self._to_dict(location)
         raw_location = location_dict.get("fullAddress") or ", ".join(
-            filter(None, [location_dict.get("city"), location_dict.get("country")])
+            filter(None, [location_dict.get("city"), location_dict.get("state"), location_dict.get("country")])
         )
         text = str(raw_location or "").strip(" ,.;:-")
         if not text:
@@ -373,8 +454,15 @@ class PreviewService:
         if lowered in _INVALID_LOCATION_VALUES:
             return ""
 
+        parts = [part.strip(" .;:-") for part in text.split(",")]
+        normalized_parts = [part for part in parts if part]
+        invalid_tokens = _INVALID_LOCATION_VALUES | {"none", "null", "undefined", "n/a", "na", "nil"}
+        cleaned_parts = [part for part in normalized_parts if part.lower() not in invalid_tokens]
+        if not cleaned_parts:
+            return ""
+        cleaned = ", ".join(cleaned_parts)
+
         # Strip parser noise prefixes while preserving original user casing.
-        cleaned = text
         for prefix in ("and ", "is ", "in "):
             if cleaned.lower().startswith(prefix):
                 cleaned = cleaned[len(prefix):]

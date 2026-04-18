@@ -8,6 +8,7 @@ All endpoints use CanonicalCVSchema v1.1 with no cv_data fallbacks.
 import copy
 import logging
 import os
+from datetime import datetime
 from uuid import uuid4
 from typing import Dict, Any, List, Optional
 
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ValidationError
 from src.application.commands.upload_cv import UploadCVCommand
 from src.application.services.conversation_service import ConversationService
 from src.application.services.document_cv_service import DocumentCVService
+from src.application.services.preview_service import PreviewService
 from src.application.services.schema_validation_service import SchemaValidationService
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 from src.domain.cv.services.merge_cv import MergeCVService
@@ -32,6 +34,7 @@ conversation_service = ConversationService()
 merge_service = MergeCVService()
 schema_validation_service = SchemaValidationService()
 document_cv_service = DocumentCVService(conversation_service=conversation_service)
+preview_service = PreviewService()
 
 
 def _ensure_file_size_limit(file_bytes: bytes) -> None:
@@ -150,7 +153,11 @@ def _merge_preview_into_canonical(cv_data: Dict[str, Any], existing_canonical: D
 
     # --- Education --------------------------------------------------------------
     if cv_data.get("education"):
-        canonical["education"] = _convert_preview_education_to_canonical(cv_data["education"])
+        existing_education = canonical.get("education") or []
+        canonical["education"] = _convert_preview_education_to_canonical(
+            cv_data["education"],
+            existing_education,
+        )
 
     # --- Projects ---------------------------------------------------------------
     if cv_data.get("project_experience"):
@@ -179,21 +186,101 @@ def _merge_preview_into_canonical(cv_data: Dict[str, Any], existing_canonical: D
     return canonical
 
 
-def _convert_preview_education_to_canonical(education_list: List) -> List[Dict]:
+def _convert_preview_education_to_canonical(
+    education_list: List,
+    existing_education: Optional[List[Dict]] = None,
+) -> List[Dict]:
     result = []
+    existing_education = existing_education or []
     for edu in education_list:
         if not isinstance(edu, dict):
             continue
-        result.append({
-            "degree": edu.get("degree") or edu.get("qualification") or edu.get("title") or "",
-            "institution": edu.get("institution") or edu.get("college") or "",
-            "university": edu.get("university") or "",
-            "specialization": edu.get("specialization") or edu.get("field") or "",
-            "yearOfPassing": str(
-                edu.get("year") or edu.get("graduation_year") or edu.get("year_of_completion") or ""
-            ),
-            "grade": edu.get("grade") or edu.get("percentage") or edu.get("gpa") or "",
-        })
+        idx = len(result)
+        existing_edu = (
+            existing_education[idx]
+            if idx < len(existing_education) and isinstance(existing_education[idx], dict)
+            else {}
+        )
+
+        mapped = copy.deepcopy(existing_edu)
+
+        degree = edu.get("degree") or edu.get("qualification") or edu.get("title")
+        institution = edu.get("institution") or edu.get("college")
+        university = edu.get("university")
+        specialization = edu.get("specialization") or edu.get("field")
+
+        year_of_passing = (
+            edu.get("yearOfPassing")
+            or edu.get("year_of_passing")
+            or edu.get("year")
+            or edu.get("graduation_year")
+            or edu.get("year_of_completion")
+        )
+        grade = (
+            edu.get("grade")
+            or edu.get("percentage")
+            or edu.get("gpa")
+            or edu.get("cgpa")
+            or edu.get("percentile")
+        )
+
+        if degree not in [None, ""]:
+            mapped["degree"] = degree
+        else:
+            mapped.setdefault("degree", "")
+
+        if institution not in [None, ""]:
+            mapped["institution"] = institution
+        else:
+            mapped.setdefault("institution", "")
+
+        if university not in [None, ""]:
+            mapped["university"] = university
+        else:
+            mapped.setdefault("university", "")
+
+        if specialization not in [None, ""]:
+            mapped["specialization"] = specialization
+        else:
+            mapped.setdefault("specialization", "")
+
+        if year_of_passing not in [None, ""]:
+            mapped["yearOfPassing"] = str(year_of_passing)
+        else:
+            mapped.setdefault("yearOfPassing", str(existing_edu.get("yearOfPassing") or ""))
+
+        if grade not in [None, ""]:
+            mapped["grade"] = grade
+        else:
+            mapped.setdefault("grade", existing_edu.get("grade") or "")
+
+        # Preserve extended canonical education fields when present.
+        if edu.get("board") not in [None, ""]:
+            mapped["board"] = edu.get("board")
+        elif "board" in existing_edu:
+            mapped.setdefault("board", existing_edu.get("board") or "")
+
+        if edu.get("location") not in [None, ""]:
+            mapped["location"] = edu.get("location")
+        elif "location" in existing_edu:
+            mapped.setdefault("location", existing_edu.get("location") or "")
+
+        if edu.get("percentage") not in [None, ""]:
+            mapped["percentage"] = edu.get("percentage")
+        elif "percentage" in existing_edu:
+            mapped.setdefault("percentage", existing_edu.get("percentage") or "")
+
+        if edu.get("cgpa") not in [None, ""]:
+            mapped["cgpa"] = edu.get("cgpa")
+        elif "cgpa" in existing_edu:
+            mapped.setdefault("cgpa", existing_edu.get("cgpa") or "")
+
+        if edu.get("percentile") not in [None, ""]:
+            mapped["percentile"] = edu.get("percentile")
+        elif "percentile" in existing_edu:
+            mapped.setdefault("percentile", existing_edu.get("percentile") or "")
+
+        result.append(mapped)
     return result
 
 
@@ -246,11 +333,11 @@ def _convert_preview_projects_to_canonical(projects_list: List, existing_project
             "role": role,
             "durationFrom": duration_from,
             "durationTo": duration_to,
-            "teamSize": proj.get("team_size"),
-            "toolsUsed": proj.get("technologies") or proj.get("technologies_used") or [],
-            "responsibilities": proj.get("responsibilities") or [],
-            "outcomes": proj.get("outcomes") or [],
-            "projectDescription": proj.get("description") or proj.get("project_description") or "",
+            "teamSize": proj.get("team_size") or existing_proj.get("teamSize"),
+            "toolsUsed": proj.get("technologies") or proj.get("technologies_used") or existing_proj.get("toolsUsed") or [],
+            "responsibilities": proj.get("responsibilities") or existing_proj.get("responsibilities") or [],
+            "outcomes": proj.get("outcomes") or existing_proj.get("outcomes") or [],
+            "projectDescription": proj.get("description") or proj.get("project_description") or existing_proj.get("projectDescription") or existing_proj.get("description") or "",
         })
     return result
 
@@ -287,6 +374,163 @@ def _convert_preview_certifications_to_canonical(cert_list: List) -> List[Dict]:
                 "credentialId": cert.get("credential_id") or "",
             })
     return result
+
+
+def _tokenize_field_path(path: str) -> List[Any]:
+    tokens: List[Any] = []
+    for part in (path or "").split("."):
+        segment = part.strip()
+        if not segment:
+            continue
+        while "[" in segment and "]" in segment:
+            before, rest = segment.split("[", 1)
+            if before:
+                tokens.append(before)
+            index_text, remainder = rest.split("]", 1)
+            if index_text.isdigit():
+                tokens.append(int(index_text))
+            segment = remainder
+        if segment:
+            tokens.append(segment)
+    return tokens
+
+
+def _coerce_value_for_target(target_path: str, value: Any) -> Any:
+    if isinstance(value, str):
+        trimmed = value.strip()
+    else:
+        trimmed = value
+
+    list_like_targets = (
+        "skills.primarySkills",
+        "skills.secondarySkills",
+        "skills.toolsAndPlatforms",
+        "skills.aiToolsAndFrameworks",
+        "skills.cloudTechnologies",
+        "skills.databases",
+        "skills.operatingSystems",
+        "experience.domainExperience",
+    )
+
+    if isinstance(trimmed, str) and target_path in list_like_targets:
+        return [item.strip() for item in trimmed.split(",") if item.strip()]
+
+    if isinstance(trimmed, str):
+        return trimmed
+
+    return value
+
+
+def _set_value_at_path(target: Dict[str, Any], field_path: str, value: Any) -> Optional[Any]:
+    tokens = _tokenize_field_path(field_path)
+    if not tokens:
+        return None
+
+    current: Any = target
+    for i, token in enumerate(tokens[:-1]):
+        next_token = tokens[i + 1]
+        if isinstance(token, int):
+            if not isinstance(current, list):
+                return None
+            while len(current) <= token:
+                current.append({} if isinstance(next_token, str) else [])
+            current = current[token]
+            continue
+
+        if not isinstance(current, dict):
+            return None
+        if token not in current or current[token] is None:
+            current[token] = [] if isinstance(next_token, int) else {}
+        current = current[token]
+
+    last = tokens[-1]
+    previous = None
+    if isinstance(last, int):
+        if not isinstance(current, list):
+            return None
+        while len(current) <= last:
+            current.append(None)
+        previous = current[last]
+        current[last] = value
+        return previous
+
+    if not isinstance(current, dict):
+        return None
+    previous = current.get(last)
+    current[last] = value
+    return previous
+
+
+def _remove_unmapped_entry(canonical_cv: Dict[str, Any], source: str, key: str) -> None:
+    unmapped = canonical_cv.get("unmappedData")
+    if not isinstance(unmapped, dict):
+        return
+
+    source_bucket = unmapped.get(source)
+    if not isinstance(source_bucket, dict):
+        return
+
+    if key in source_bucket:
+        source_bucket.pop(key, None)
+    if not source_bucket:
+        unmapped.pop(source, None)
+
+
+def _apply_others_mappings(canonical_cv: Dict[str, Any], mappings: List[Dict[str, Any]]) -> Dict[str, int]:
+    allowed_roots = {
+        "candidate",
+        "skills",
+        "experience",
+        "education",
+        "certifications",
+        "personalDetails",
+    }
+    applied = 0
+    skipped = 0
+
+    if not mappings:
+        return {"applied": applied, "skipped": skipped}
+
+    canonical_cv.setdefault("audit", {})
+    canonical_cv["audit"].setdefault("manualEdits", [])
+
+    for mapping in mappings:
+        target_path = str(mapping.get("target_path") or "").strip()
+        raw_value = mapping.get("value")
+        source = str(mapping.get("source") or "")
+        key = str(mapping.get("key") or "")
+
+        if not target_path or not raw_value:
+            skipped += 1
+            continue
+
+        root = target_path.split(".", 1)[0]
+        if root not in allowed_roots:
+            skipped += 1
+            continue
+
+        new_value = _coerce_value_for_target(target_path, raw_value)
+        previous_value = _set_value_at_path(canonical_cv, target_path, new_value)
+        if previous_value is None and new_value is None:
+            skipped += 1
+            continue
+
+        canonical_cv["audit"]["manualEdits"].append({
+            "field": target_path,
+            "previousValue": "" if previous_value is None else str(previous_value),
+            "newValue": "" if new_value is None else str(new_value),
+            "editedBy": "ui_review",
+            "editedAt": datetime.now().isoformat(),
+            "editReason": f"Mapped from Others ({source}/{key})",
+        })
+
+        if source and key:
+            _remove_unmapped_entry(canonical_cv, source, key)
+
+        applied += 1
+
+    canonical_cv["audit"]["updatedAt"] = datetime.now().isoformat()
+    return {"applied": applied, "skipped": skipped}
 
 
 class EditCVRequest(BaseModel):
@@ -447,13 +691,24 @@ def review_cv(session_id: str, request: ReviewCVRequest):
     if "error" in session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
-    cv_data = request.cv_data
+    cv_data = copy.deepcopy(request.cv_data)
+    others_mappings = cv_data.pop("_others_mappings", [])
     existing_canonical = session.get("canonical_cv") or {}
 
     logger.info(f"HITL review: session={session_id}, incoming keys={list(cv_data.keys())}")
 
     # Convert/merge preview format → canonical (preserve audio-extracted fields)
     canonical_cv = _merge_preview_into_canonical(cv_data, existing_canonical)
+
+    # Apply manual mappings from the UI Others panel
+    mapping_result = _apply_others_mappings(canonical_cv, others_mappings if isinstance(others_mappings, list) else [])
+    if mapping_result["applied"]:
+        logger.info(
+            "Applied %s Others mappings (skipped=%s) for session=%s",
+            mapping_result["applied"],
+            mapping_result["skipped"],
+            session_id,
+        )
 
     # Validate
     validation_result = schema_validation_service.validate(canonical_cv)
@@ -548,10 +803,17 @@ async def upload_cv_document(
     Phase 4: Upload CV document with canonical schema integration
     
     This endpoint:
-    1. Parses the document to canonical schema v1.1
-    2. Merges with existing canonical CV (preserving manual edits)
-    3. Validates the merged result using SchemaValidationService
-    4. Updates the session with canonical CV and validation results
+    1. Parses the document to canonical schema v1.1 (deterministic extraction)
+    2. Optionally applies LLM-assisted extraction if ENABLE_LLM_EXTRACTION is true (Phase 5)
+    3. Merges with existing canonical CV (preserving manual edits)
+    4. Validates the merged result using SchemaValidationService
+    5. Updates the session with canonical CV and validation results
+    
+    LLM extraction (Phase 5):
+    - Can be enabled via ENABLE_LLM_EXTRACTION config flag
+    - Applies optional normalization and structured field extraction
+    - Deterministic parsing results take priority
+    - Falls back gracefully if LLM unavailable
     
     Returns:
         - canonical_cv: The merged canonical CV data
@@ -572,10 +834,13 @@ async def upload_cv_document(
             file_content=file_content,
             filename=file.filename
         )
-        
+
+        preview_data = preview_service.build_preview_from_canonical(result["canonical_cv"])
         return {
             "session_id": session_id,
             "canonical_cv": result["canonical_cv"],
+            "cv_data": preview_data,
+            "preview": preview_data,
             "validation_results": result["validation"],
             "merge_stats": result["merge_stats"],
             "message": "Document uploaded and processed successfully"

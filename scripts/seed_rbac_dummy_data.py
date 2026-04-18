@@ -217,11 +217,11 @@ def seed_data() -> None:
                     )
 
             users = [
-                ("admin_nttdata", "admin_nttdata@nttdata.com", "Admin Demo", "admin"),
-                ("reviewer_nttdata", "reviewer_nttdata@nttdata.com", "Reviewer Demo", "reviewer"),
-                ("editor_nttdata", "editor_nttdata@nttdata.com", "Editor Demo", "cv_editor"),
-                ("manager_nttdata", "manager_nttdata@nttdata.com", "Delivery Manager Demo", "delivery_manager"),
-                ("user_nttdata", "user_nttdata@nttdata.com", "User Demo", "user"),
+                ("venkata.janga", "venkata.janga@nttdata.com", "Venkata Janga", "admin"),
+                ("aarthy.s", "aarthy.s@nttdata.com", "Aarthy S", "reviewer"),
+                ("madhan.k", "madhan.k@nttdata.com", "Madhan K", "cv_editor"),
+                ("priya.r", "priya.r@nttdata.com", "Priya R", "delivery_manager"),
+                ("kiran.p", "kiran.p@nttdata.com", "Kiran P", "user"),
             ]
 
             for username, email, full_name, role_name in users:

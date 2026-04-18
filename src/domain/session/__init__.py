@@ -9,6 +9,11 @@ from src.domain.session.repositories import (
 	SessionRepository,
 )
 from src.domain.session.service import SessionService
+from src.domain.session.migration_guard import (
+	SessionSchemaMigrationGuard,
+	SessionDataIntegrityValidator,
+	SchemaValidationError,
+)
 
 __all__ = [
 	"CVSession",
@@ -24,4 +29,7 @@ __all__ = [
 	"SessionNotFoundError",
 	"SessionConflictError",
 	"SessionService",
+	"SessionSchemaMigrationGuard",
+	"SessionDataIntegrityValidator",
+	"SchemaValidationError",
 ]

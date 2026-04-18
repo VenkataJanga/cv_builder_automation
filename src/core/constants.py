@@ -26,6 +26,48 @@ OPTIONAL_SECTIONS = [
 
 ALL_SECTIONS = REQUIRED_SECTIONS + OPTIONAL_SECTIONS
 
+# Section alias fallbacks (used by parsers when headings vary by template)
+SUMMARY_SECTION_ALIASES = [
+    "professional summary",
+    "experience summary",
+    "summary",
+    "profile",
+    "objective",
+    "about me",
+]
+
+TECHNICAL_SECTION_ALIASES = [
+    "technical skills",
+    "technical expertise",
+    "skills",
+    "core competencies",
+    "expertise",
+    "technologies",
+    "domain expertise",
+    "domain knowledge",
+]
+
+PROJECT_SECTION_ALIASES = [
+    "project",
+    "projects",
+    "project details",
+    "key projects",
+    "professional projects",
+]
+
+# Designation fallback vocabulary for deterministic matching when direct extraction is weak.
+DESIGNATION_FALLBACKS = [
+    "Systems Integration Senior Analyst",
+    "Software Development Senior Specialist",
+    "Systems Integration Specialist",
+    "Software Development Senior Analyst",
+    "Information Technology Analyst",
+    "Software Development Specialist",
+    "Software Development Manager",
+    "Business Intelligence Advisor",
+    "Software Development Analyst",
+]
+
 # Required Fields for Validation
 REQUIRED_PERSONAL_FIELDS = [
     "full_name",

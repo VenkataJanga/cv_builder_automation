@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict
 from uuid import uuid4
 
@@ -8,11 +9,16 @@ from src.application.services.retrieval_service import RetrievalService
 from src.application.services.validation_service import ValidationService
 from src.ai.services.llm_enhancement_service import LLMEnhancementService
 from src.ai.services.langsmith_service import LangSmithService
+from src.ai.services.extraction_service import ExtractionService
 from src.core.config.settings import settings
 from src.questionnaire.answer_analyzer import AnswerAnalyzer
 from src.questionnaire.followup_engine import FollowupEngine
 from src.questionnaire.question_selector import select_initial_questions, select_questions
 from src.questionnaire.role_resolver import resolve_role
+from src.domain.cv.services.unmapped_data_service import UnmappedDataService
+from src.domain.cv.services.canonical_data_staging_service import (
+    CanonicalDataStagingService,
+)
 from src.domain.session import (
     DatabaseSessionRepository,
     FileSessionRepository,
@@ -35,6 +41,7 @@ def _build_session_repository():
 
 _SESSION_REPOSITORY = _build_session_repository()
 _SESSION_SERVICE = SessionService(repository=_SESSION_REPOSITORY)
+logger = logging.getLogger(__name__)
 
 
 def get_session_persistence_service() -> SessionService:
@@ -51,6 +58,8 @@ class ConversationService:
         self.validation_service = ValidationService()
         self.enhancement_service = LLMEnhancementService()
         self.langsmith_service = LangSmithService()
+        self.extraction_service = ExtractionService()
+        self.unmapped_service = UnmappedDataService()
 
     def _update_session_projection(
         self,
@@ -117,8 +126,83 @@ class ConversationService:
             "education": [],
             "certifications": [],
             "publications": [],
-            "awards": []
+            "awards": [],
+            "unmappedData": {},
+            "sourceSnapshots": {},
+            "mappingWarnings": [],
         }
+
+    def _preserve_conversation_data_loss_guards(
+        self,
+        session: Dict[str, Any],
+        question: str,
+        answer: str,
+        extraction_result: Dict[str, Any] | None = None,
+    ) -> None:
+        canonical_cv = session.get("canonical_cv") or {}
+        self.unmapped_service.ensure_sections(canonical_cv)
+
+        self.unmapped_service.preserve_snapshot(
+            canonical_cv,
+            "conversation",
+            {
+                "kind": "question_answer",
+                "question": question,
+                "answer": answer,
+            },
+        )
+
+        unmapped_answers = (session.get("cv_data") or {}).get("unmapped_answers") or {}
+        if unmapped_answers:
+            self.unmapped_service.preserve_unmapped(
+                canonical_cv,
+                "conversation",
+                "questionnaire_unmapped_answers",
+                unmapped_answers,
+            )
+
+        if extraction_result:
+            extracted_fields = extraction_result.get("extracted_fields") or {}
+            known_extraction_keys = {
+                "personal_details",
+                "summary",
+                "skills",
+                "work_experience",
+                "project_experience",
+                "education",
+                "certifications",
+            }
+            unmapped_top_level = self.unmapped_service.collect_unmapped_top_level(
+                extracted_fields,
+                known_extraction_keys,
+            )
+            if unmapped_top_level:
+                self.unmapped_service.preserve_unmapped(
+                    canonical_cv,
+                    "conversation_llm_extraction",
+                    "top_level_fields",
+                    unmapped_top_level,
+                )
+
+            if extraction_result.get("normalized_text"):
+                self.unmapped_service.preserve_snapshot(
+                    canonical_cv,
+                    "conversation_llm_extraction",
+                    {
+                        "kind": "normalized_text",
+                        "text": extraction_result.get("normalized_text"),
+                    },
+                )
+
+            for warning in extraction_result.get("warnings", []) or []:
+                self.unmapped_service.add_mapping_warning(
+                    canonical_cv,
+                    "conversation_llm_extraction",
+                    str(warning),
+                    context={"question": question},
+                )
+
+        session["canonical_cv"] = canonical_cv
 
     def start_session(self) -> Dict[str, Any]:
         session_id = str(uuid4())
@@ -170,6 +254,13 @@ class ConversationService:
                 session["cv_data"] = self.cv_builder_service.apply_role_seed(session["cv_data"], answer)
                 self._update_session_projection(session)
 
+            self._preserve_conversation_data_loss_guards(
+                session,
+                current_question,
+                answer,
+                extraction_result=None,
+            )
+
             if session["current_index"] < len(questions):
                 self.save_session(session_id, session)
                 return {
@@ -212,6 +303,12 @@ class ConversationService:
             session["current_index"] = 0
             session["cv_data"] = self.cv_builder_service.apply_role_seed(session["cv_data"], answer)
             self._update_session_projection(session)
+            self._preserve_conversation_data_loss_guards(
+                session,
+                "What is your current role/title?",
+                answer,
+                extraction_result=None,
+            )
 
             self.save_session(session_id, session)
             return {
@@ -231,6 +328,14 @@ class ConversationService:
                 session["cv_data"],
                 current_question,
                 answer,
+            )
+
+            # Optional LLM extraction step (Phase 5)
+            # This enriches cv_data with extracted structured fields if enabled
+            session["cv_data"], extraction_result = self._try_apply_extraction(
+                current_question,
+                answer,
+                session["cv_data"],
             )
 
             role = session.get("role")
@@ -259,6 +364,12 @@ class ConversationService:
             )
 
             built_schema = self._update_session_projection(session, validation)
+            self._preserve_conversation_data_loss_guards(
+                session,
+                current_question,
+                answer,
+                extraction_result=extraction_result,
+            )
 
             if followup:
                 self.save_session(session_id, session)
@@ -304,9 +415,63 @@ class ConversationService:
 
         return {"message": "Invalid state"}
 
+    def _try_apply_extraction(
+        self,
+        question: str,
+        answer: str,
+        cv_data: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], Dict[str, Any] | None]:
+        """
+        Optionally apply LLM extraction to answer and merge results into cv_data.
+        
+        This is a non-breaking integration point:
+        - Only runs if ENABLE_LLM_EXTRACTION is True
+        - Only for suitable question types
+        - Falls back gracefully if LLM disabled
+        - Questionnaire values always take priority
+        
+        Args:
+            question: The question asked
+            answer: The user's answer
+            cv_data: Current CV data
+            
+        Returns:
+            Tuple of:
+            - updated CV data (or unchanged if extraction not applied)
+            - extraction result payload (or None)
+        """
+        if not (settings.ENABLE_LLM_EXTRACTION or settings.ENABLE_LLM_NORMALIZATION):
+            return cv_data, None
+
+        if not self.extraction_service.should_extract(question, answer):
+            return cv_data, None
+
+        try:
+            logger.debug(f"Attempting LLM extraction for question: {question[:50]}...")
+
+            # Extract and merge
+            result = self.extraction_service.extract_and_merge(
+                raw_text=answer,
+                existing_cv_data=cv_data,
+                context={"question": question},
+                merge_strategy="questionnaire_wins",
+            )
+
+            if result.get("success"):
+                logger.info(f"LLM extraction successful. Merged {len(result.get('merged_fields', []))} fields.")
+                return result["merged_cv_data"], result
+
+            logger.debug("LLM extraction returned empty or failed result")
+            return cv_data, result
+
+        except Exception as e:
+            logger.error(f"Error during LLM extraction: {e}")
+            return cv_data, None
+
     def get_session(self, session_id: str) -> Dict[str, Any]:
-        persisted = _SESSION_REPOSITORY.get_session(session_id)
-        if not persisted:
+        try:
+            persisted = _SESSION_SERVICE.get_latest(session_id)
+        except Exception:
             return {"error": "Invalid session_id"}
         return self._to_legacy_dict(persisted)
 
@@ -321,8 +486,7 @@ class ConversationService:
         
         canonical_cv is the single source of truth for all reads (preview, edit, export).
         """
-        existing = _SESSION_REPOSITORY.get_session(session_id)
-
+        expected_version = session_data.get("version") if isinstance(session_data.get("version"), int) else None
         workflow_state = {
             k: v
             for k, v in (session_data or {}).items()
@@ -342,30 +506,48 @@ class ConversationService:
             }
         }
 
-        if existing:
-            existing.canonical_cv = session_data.get("canonical_cv", existing.canonical_cv)
-            existing.validation_results = session_data.get("validation_results", existing.validation_results)
-            existing.workflow_state = workflow_state
-            existing.add_source_event(SessionSourceType.MANUAL_EDIT, description="session_save")
-            existing.touch()
-            _SESSION_REPOSITORY.save_session(existing)
-        else:
+        try:
+            _SESSION_SERVICE.save_workflow_state(
+                session_id=session_id,
+                workflow_state=workflow_state,
+                canonical_cv=session_data.get("canonical_cv"),
+                validation_results=session_data.get("validation_results"),
+                expected_version=expected_version,
+            )
+        except Exception:
+            # If the session does not exist yet, initialize and persist it.
             created = _SESSION_SERVICE.initialize_session(
                 session_id=session_id,
                 canonical_cv=session_data.get("canonical_cv", {}),
+                workflow_state=workflow_state,
             )
             created.validation_results = session_data.get("validation_results", {})
-            created.workflow_state = workflow_state
             created.add_source_event(SessionSourceType.MANUAL_EDIT, description="session_create")
             created.touch()
             _SESSION_REPOSITORY.save_session(created)
 
     def reset_session(self, session_id: str) -> Dict[str, Any]:
-        exists = _SESSION_REPOSITORY.get_session(session_id)
-        if exists:
-            _SESSION_REPOSITORY.delete_session(session_id)
-            return {"message": "Session reset successfully"}
-        return {"error": "Invalid session_id"}
+        try:
+            # Clear staged extraction data from persistence layer
+            staging_service = CanonicalDataStagingService()
+            cleared_count, marked_count = staging_service.clear_session_staging(session_id)
+            logger.info(
+                f"Cleared staging data for session {session_id}: "
+                f"{cleared_count} records cleared, {marked_count} marked"
+            )
+            
+            # Delete session from repository
+            exists = _SESSION_REPOSITORY.get_session(session_id)
+            if exists:
+                _SESSION_REPOSITORY.delete_session(session_id)
+                return {
+                    "message": "Session reset successfully",
+                    "staging_records_cleared": cleared_count
+                }
+            return {"error": "Invalid session_id"}
+        except Exception as e:
+            logger.error(f"Error resetting session {session_id}: {str(e)}")
+            return {"error": f"Failed to reset session: {str(e)}"}
 
     def _to_legacy_dict(self, persisted: CVSession) -> Dict[str, Any]:
         payload = dict(persisted.workflow_state or {})
