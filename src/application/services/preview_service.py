@@ -174,10 +174,10 @@ class PreviewService:
             canonical_dict = canonical_data if isinstance(canonical_data, dict) else canonical_data.model_dump()
             candidate = self._to_dict(canonical_dict.get("candidate", {}))
             candidate_personal_info = self._to_dict(
-                candidate.get("personalInfo") or
-                candidate.get("personal_info") or
-                candidate.get("personalDetails") or
-                {}
+                candidate.get("personalInfo")
+                or candidate.get("personal_info")
+                or candidate.get("personalDetails")
+                or {}
             )
             skills = self._to_dict(canonical_dict.get("skills", {}))
             experience = self._to_dict(canonical_dict.get("experience", {}))
@@ -196,11 +196,10 @@ class PreviewService:
             candidate_location = self._to_dict(
                 candidate_field("currentLocation", "location", "current_location") or {}
             )
-            candidate_email = (
-                candidate_field("email", "emailAddress", "email_address") or ""
-            )
+            candidate_email = candidate_field("email", "emailAddress", "email_address") or ""
             candidate_portal_id = (
-                candidate_field("portalId", "portal_id", "employee_id", "portal_id", "employeeId") or ""
+                candidate_field("portalId", "portal_id", "employee_id", "portal_id", "employeeId")
+                or ""
             )
             current_title = self._sanitize_current_title(
                 candidate_field("currentDesignation", "designation", "currentRole", "current_role", "title") or ""
@@ -209,29 +208,35 @@ class PreviewService:
                 "totalExperienceYears",
                 "yearsOfExperience",
                 "total_experience",
-                "experienceYears"
+                "experienceYears",
             )
             total_experience_str = (
-                f"{total_experience} years" if isinstance(total_experience, (int, float)) else str(total_experience or "")
+                f"{total_experience} years"
+                if isinstance(total_experience, (int, float))
+                else str(total_experience or "")
             )
             domain_expertise = self._extract_domain_expertise(experience, skills, canonical_dict)
             summary_text = (
-                candidate_field("summary", "professionalSummary", "careerObjective", "career_objective") or
-                canonical_dict.get("summary") or
-                self._build_summary_fallback(candidate) or
-                self._build_summary_fallback(candidate_personal_info)
+                candidate_field("summary", "professionalSummary", "careerObjective", "career_objective")
+                or canonical_dict.get("summary")
+                or self._build_summary_fallback(candidate)
+                or self._build_summary_fallback(candidate_personal_info)
             )
 
             if not summary_text:
-                summary_text = self._build_summary_fallback({
-                    "designation": candidate_field("currentDesignation", "designation", "currentRole", "current_role", "title"),
-                    "totalExperienceYears": total_experience,
-                    "currentOrganization": candidate_field("currentOrganization", "current_organization", "organization"),
-                })
-            
-            # Build formatter-compatible structure
+                summary_text = self._build_summary_fallback(
+                    {
+                        "designation": candidate_field(
+                            "currentDesignation", "designation", "currentRole", "current_role", "title"
+                        ),
+                        "totalExperienceYears": total_experience,
+                        "currentOrganization": candidate_field(
+                            "currentOrganization", "current_organization", "organization"
+                        ),
+                    }
+                )
+
             formatted_data = {
-                # Header information
                 "header": {
                     "full_name": candidate_field("fullName", "firstName", "name", "full_name") or "",
                     "current_title": current_title,
@@ -243,37 +248,33 @@ class PreviewService:
                     "employee_id": candidate_portal_id,
                     "portal_id": candidate_portal_id,
                     "phone": candidate_field("phoneNumber", "phone", "contact_number") or "",
-                    "grade": candidate_field("currentGrade", "grade") or ""
+                    "grade": candidate_field("currentGrade", "grade") or "",
                 },
-                
-                # Personal details
                 "personal_details": {
                     "full_name": candidate_field("fullName", "firstName", "name", "full_name") or "",
                     "current_title": current_title,
-                    "total_experience": float(total_experience) if isinstance(total_experience, (int, float)) else (float(total_experience) if str(total_experience).isdigit() else 0.0),
+                    "total_experience": float(total_experience)
+                    if isinstance(total_experience, (int, float))
+                    else (float(total_experience) if str(total_experience).isdigit() else 0.0),
                     "current_organization": candidate_field("currentOrganization", "current_organization", "organization") or "",
                     "location": self._format_location(candidate_location) or personal_details.get("location", ""),
                     "email": candidate_email,
                     "phone": candidate_field("phoneNumber", "phone", "contact_number") or "",
-                    "linkedin": personal_details.get("linkedinUrl", "") or candidate_field("linkedIn", "linkedinUrl", "linkedin") or "",
-                    "grade": candidate_field("currentGrade", "grade") or ""
+                    "linkedin": personal_details.get("linkedinUrl", "")
+                    or candidate_field("linkedIn", "linkedinUrl", "linkedin")
+                    or "",
+                    "grade": candidate_field("currentGrade", "grade") or "",
                 },
-                
-                # Summary
                 "summary": {
                     "professional_summary": summary_text,
-                    "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or ""
+                    "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or "",
                 },
-                
-                # Skills
                 "skills": {
                     "primary_skills": skills.get("primarySkills", []),
                     "secondary_skills": skills.get("secondarySkills", []),
                     "tools_and_platforms": skills.get("toolsAndPlatforms", []),
                     "domain_expertise": domain_expertise,
                 },
-                
-                # Technical fields
                 "tools_and_platforms": skills.get("toolsAndPlatforms", []),
                 "ai_frameworks": skills.get("aiToolsAndFrameworks", []),
                 "cloud_platforms": skills.get("cloudTechnologies", []),
@@ -281,32 +282,41 @@ class PreviewService:
                 "databases": skills.get("databases", []),
                 "domain_expertise": domain_expertise,
                 "secondary_skills": skills.get("secondarySkills", []),
-                
-                # Experience
                 "employment": {
                     "current_employer": candidate_field("currentOrganization", "current_organization", "organization") or "",
-                    "total_experience": total_experience_str
+                    "total_experience": total_experience_str,
                 },
-                
-                # Projects
                 "project_experience": self._convert_projects_to_formatter_format(experience.get("projects", [])),
-                
-                # Education
                 "education": self._convert_education_to_formatter_format(canonical_dict.get("education", [])),
-                
-                # Other fields
                 "work_experience": self._convert_work_history_to_formatter_format(experience.get("workHistory", [])),
                 "certifications": self._convert_certifications_to_formatter_format(canonical_dict.get("certifications", [])),
                 "achievements": self._convert_achievements_to_formatter_format(canonical_dict.get("achievements", [])),
                 "languages": self._to_list(personal_details.get("languagesKnown")),
-                
-                # Metadata
                 "schema_version": canonical_dict.get("schema_version", "") or canonical_dict.get("schemaVersion", ""),
-                "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or ""
+                "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or "",
             }
-            
+
+            unmapped_data = canonical_dict.get("unmappedData", {})
+            role_details: dict[str, Any] = {}
+            if isinstance(unmapped_data, dict):
+                for section_name, section_value in unmapped_data.items():
+                    if section_name == "unmapped_answers":
+                        continue
+
+                    if isinstance(section_value, dict):
+                        for field_name, field_value in section_value.items():
+                            if field_value in (None, "", [], {}):
+                                continue
+                            label = field_name if section_name == "leadership" else f"{section_name}_{field_name}"
+                            role_details[label] = field_value
+                    elif section_value not in (None, "", [], {}):
+                        role_details[section_name] = section_value
+
+            if role_details:
+                formatted_data["leadership"] = role_details
+
             return formatted_data
-            
+
         except Exception as e:
             self.logger.error(f"Error converting canonical data to formatter format: {str(e)}")
             return {}

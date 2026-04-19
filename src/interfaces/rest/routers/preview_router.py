@@ -11,7 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from src.application.services.conversation_service import ConversationService
 from src.application.services.preview_service import PreviewService
+from src.core.i18n import t
 from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
+from src.interfaces.rest.dependencies.locale_dependencies import get_request_locale
 
 router = APIRouter(prefix="/preview", tags=["preview"], dependencies=[Depends(get_current_user)])
 
@@ -21,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/{session_id}")
-def get_preview(session_id: str):
+def get_preview(session_id: str, locale: str = Depends(get_request_locale)):
     """
     Get CV preview for a session (Phase 4: Canonical-only)
     
@@ -39,7 +41,7 @@ def get_preview(session_id: str):
     # Get session
     session = conversation_service.get_session(session_id)
     if "error" in session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail=t("api.preview.session_not_found", locale=locale))
     
     # DEBUG: Verify session state before preview
     logger.info(f"DEBUG: Preview request for session {session_id}")
@@ -53,7 +55,7 @@ def get_preview(session_id: str):
     if not canonical_cv:
         raise HTTPException(
             status_code=400,
-            detail="No canonical CV data found in session. Please complete CV creation first."
+            detail=t("api.preview.missing_canonical", locale=locale)
         )
     
     # Get validation results from session (stored during save/validate operations)
@@ -66,7 +68,7 @@ def get_preview(session_id: str):
         logger.error(f"Failed to build preview from canonical_cv: {e}")
         raise HTTPException(
             status_code=500,
-            detail="Unable to generate preview from canonical CV data."
+            detail=t("api.preview.preview_build_failed", locale=locale)
         )
 
     logger.info("Preview generated from canonical_cv")

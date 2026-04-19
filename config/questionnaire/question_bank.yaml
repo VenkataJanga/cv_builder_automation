@@ -460,3 +460,183 @@ senior_hr:
     question: What HR transformations or initiatives have you led?
     required: false
     order: 610
+
+tech_lead:
+  - id: q_tl_001
+    section: leadership
+    field: team_scope
+    question: How many engineers have you led, and what were their roles?
+    required: true
+    order: 701
+
+  - id: q_tl_002
+    section: leadership
+    field: technical_ownership
+    question: What systems, services, or modules did you own end-to-end?
+    required: true
+    order: 702
+
+  - id: q_tl_003
+    section: leadership
+    field: architecture_decisions
+    question: Which key architecture or design decisions did you drive?
+    required: true
+    order: 703
+
+  - id: q_tl_004
+    section: leadership
+    field: delivery_planning
+    question: How did you plan sprints and balance delivery with technical debt?
+    required: false
+    order: 704
+
+  - id: q_tl_005
+    section: leadership
+    field: mentoring_engineers
+    question: How did you mentor developers and improve team capability?
+    required: false
+    order: 705
+
+software_development_senior_specialist:
+  - id: q_sdss_001
+    section: skills
+    field: specialization_area
+    question: What is your primary software specialization area?
+    required: true
+    order: 801
+
+  - id: q_sdss_002
+    section: leadership
+    field: complex_problem_solving
+    question: Can you share an example of a complex technical problem you solved?
+    required: true
+    order: 802
+
+  - id: q_sdss_003
+    section: leadership
+    field: code_quality_practices
+    question: What engineering practices do you use to ensure code quality and reliability?
+    required: false
+    order: 803
+
+  - id: q_sdss_004
+    section: leadership
+    field: cross_team_collaboration
+    question: How do you collaborate with architects, product owners, and QA teams?
+    required: false
+    order: 804
+
+  - id: q_sdss_005
+    section: leadership
+    field: technical_impact
+    question: What measurable technical impact have you delivered in recent projects?
+    required: false
+    order: 805
+
+software_development_analyst:
+  - id: q_sda_001
+    section: leadership
+    field: requirement_analysis
+    question: How do you analyze business requirements before implementation?
+    required: true
+    order: 901
+
+  - id: q_sda_002
+    section: leadership
+    field: documentation_approach
+    question: What technical documents or artifacts do you usually prepare?
+    required: true
+    order: 902
+
+  - id: q_sda_003
+    section: leadership
+    field: stakeholder_coordination
+    question: How do you coordinate with business stakeholders and development teams?
+    required: false
+    order: 903
+
+  - id: q_sda_004
+    section: leadership
+    field: defect_and_change_management
+    question: How do you handle requirement changes and defect clarifications?
+    required: false
+    order: 904
+
+  - id: q_sda_005
+    section: leadership
+    field: process_improvements
+    question: What process improvements have you introduced in analysis or delivery?
+    required: false
+    order: 905
+
+software_development_manager:
+  - id: q_sdm_001
+    section: leadership
+    field: org_scope
+    question: What is the size and structure of the teams you manage?
+    required: true
+    order: 1001
+
+  - id: q_sdm_002
+    section: leadership
+    field: delivery_model
+    question: How do you manage planning, execution, and release governance?
+    required: true
+    order: 1002
+
+  - id: q_sdm_003
+    section: leadership
+    field: people_management
+    question: How do you handle hiring, coaching, and performance management?
+    required: true
+    order: 1003
+
+  - id: q_sdm_004
+    section: leadership
+    field: risk_and_dependencies
+    question: How do you track risks, dependencies, and cross-team blockers?
+    required: false
+    order: 1004
+
+  - id: q_sdm_005
+    section: leadership
+    field: delivery_outcomes
+    question: What business or customer outcomes did your teams deliver?
+    required: false
+    order: 1005
+
+business_intelligence_advisor:
+  - id: q_bia_001
+    section: skills
+    field: bi_stack
+    question: Which BI tools and platforms do you use most often?
+    required: true
+    order: 1101
+
+  - id: q_bia_002
+    section: leadership
+    field: dashboard_strategy
+    question: How do you design KPI dashboards for different business audiences?
+    required: true
+    order: 1102
+
+  - id: q_bia_003
+    section: leadership
+    field: data_modeling
+    question: What is your approach to data modeling and semantic layer design?
+    required: true
+    order: 1103
+
+  - id: q_bia_004
+    section: leadership
+    field: data_governance
+    question: How do you ensure data quality, consistency, and governance in reports?
+    required: false
+    order: 1104
+
+  - id: q_bia_005
+    section: leadership
+    field: decision_impact
+    question: Can you share an example where your analytics influenced a key decision?
+    required: false
+    order: 1105

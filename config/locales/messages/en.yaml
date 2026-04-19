@@ -1,0 +1,43 @@
+followup:
+  more_details: "Could you please provide more details?"
+  expand_summary: "Can you expand that summary into 2-3 formal lines including your role focus and strengths?"
+  add_skills: "Please add more skills, tools, platforms, and frameworks relevant to your role."
+  quantify_achievement: "Can you quantify that achievement with impact, percentage improvement, savings, or delivery result?"
+  business_result: "What measurable business result did this create, such as efficiency, savings, quality, or delivery improvement?"
+  describe_technical_leadership: "Can you describe the system type, technologies used, and your exact technical leadership role?"
+
+validation:
+  save:
+    missing_mandatory: "Missing mandatory fields: {fields}"
+    less_than_50: "CV is less than 50% complete"
+  save_validate:
+    no_experience: "No work experience or projects found"
+    no_skills: "No skills information found"
+    no_education: "No education information found"
+    required_for_export: "Required for export: {fields}"
+    recommended_add: "Recommended to add: {fields}"
+  export:
+    missing_required: "Missing required fields: {fields}"
+    blocked_no_mandatory: "Cannot export CV without mandatory fields"
+    no_experience_required: "At least one work experience or project is required for export"
+    blocked_no_experience: "Cannot export CV without work experience"
+    too_incomplete: "CV is only {completeness:.1f}% complete (minimum 40% required)"
+    blocked_not_complete: "CV not sufficiently complete for export"
+  extraction:
+    low_overall: "LLM extraction confidence is low ({confidence:.1f}%). Manual review recommended."
+    low_field: "Low confidence in {field} extraction ({confidence:.1f}%). Verify accuracy."
+
+api:
+  auth:
+    too_many_login_attempts: "Too many login attempts. Please try again after 60 seconds."
+  preview:
+    session_not_found: "Session not found"
+    missing_canonical: "No canonical CV data found in session. Please complete CV creation first."
+    preview_build_failed: "Unable to generate preview from canonical CV data."
+  validation:
+    missing_canonical: "No canonical CV data found in session. Please upload or create a CV first."
+  speech:
+    file_too_large: "File too large. Maximum allowed size is {max_mb} MB."
+    transcribe_failed: "Audio transcription failed: {error}"
+    invalid_session: "Invalid session_id"
+    correction_failed: "Transcript correction failed: {error}"

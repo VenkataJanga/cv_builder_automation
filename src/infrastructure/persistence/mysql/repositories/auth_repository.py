@@ -32,13 +32,14 @@ class AuthRepository:
     # ------------------------------------------------------------------
 
     def create(self, username: str, email: str, hashed_password: str,
-               full_name: str | None = None, role: Role = Role.USER) -> User:
+               full_name: str | None = None, role: Role = Role.USER, preferred_locale: str = "en") -> User:
         row = UserORM(
             username=username,
             email=email,
             hashed_password=hashed_password,
             full_name=full_name,
             role=role.value,
+            preferred_locale=preferred_locale,
         )
         self._db.add(row)
         self._db.commit()
@@ -62,6 +63,7 @@ class AuthRepository:
             hashed_password=row.hashed_password,
             full_name=row.full_name,
             role=Role(row.role),
+            preferred_locale=row.preferred_locale,
             is_active=row.is_active,
             created_at=row.created_at,
             updated_at=row.updated_at,

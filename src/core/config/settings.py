@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     TEMPLATE_BASE_PATH: str = Field(default="./src/templates")
     DEFAULT_TEMPLATE: str = Field(default="standard_nttdata")
     QUESTIONNAIRE_PATH: str = Field(default="./config/questionnaire")
+    DEFAULT_LOCALE: str = Field(default="en")
+    SUPPORTED_LOCALES: str = Field(default="en,de")
 
     ENABLE_RAG: bool = Field(default=True)
     ENABLE_VOICE: bool = Field(default=True)

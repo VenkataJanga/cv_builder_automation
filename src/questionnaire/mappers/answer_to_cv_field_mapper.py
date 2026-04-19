@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
 import re
+from pathlib import Path
 from typing import Any, Dict, List
 
+import yaml
+
 from src.ai.services.conversational_text_extractor import extract_from_conversational_text
+from src.ai.services.llm_service import get_llm_service
 from src.core.logging.logger import get_print_logger
 from src.domain.cv.services.merge_cv import MergeCVService
 
@@ -21,6 +26,9 @@ class AnswerToCVFieldMapper:
     """
 
     def __init__(self) -> None:
+        self._id_to_target: Dict[str, tuple[str, str]] = {}
+        self._llm_question_cache: Dict[str, tuple[str, str] | None] = {}
+        self._llm_service = get_llm_service()
         self._mapping = {
             "what is your full name?": ("personal_details", "full_name"),
             "what is your current role/title?": ("personal_details", "current_title"),
@@ -86,14 +94,197 @@ class AnswerToCVFieldMapper:
             "what governance models have you implemented?": ("leadership", "governance_models"),
             "what business growth or revenue impact have you driven?": ("leadership", "business_impact"),
             "how do you align delivery with business strategy?": ("leadership", "alignment_strategy"),
+            # Tech Lead role questions
+            "how many engineers have you led, and what were their roles?": ("leadership", "team_scope"),
+            "what systems, services, or modules did you own end-to-end?": ("leadership", "technical_ownership"),
+            "which key architecture or design decisions did you drive?": ("leadership", "architecture_decisions"),
+            "how did you plan sprints and balance delivery with technical debt?": ("leadership", "delivery_planning"),
+            "how did you mentor developers and improve team capability?": ("leadership", "mentoring_engineers"),
+            # Software Development Senior Specialist questions
+            "what is your primary software specialization area?": ("skills", "specialization_area"),
+            "can you share an example of a complex technical problem you solved?": ("leadership", "complex_problem_solving"),
+            "what engineering practices do you use to ensure code quality and reliability?": ("leadership", "code_quality_practices"),
+            "how do you collaborate with architects, product owners, and qa teams?": ("leadership", "cross_team_collaboration"),
+            "what measurable technical impact have you delivered in recent projects?": ("leadership", "technical_impact"),
+            # Software Development Analyst questions
+            "how do you analyze business requirements before implementation?": ("leadership", "requirement_analysis"),
+            "what technical documents or artifacts do you usually prepare?": ("leadership", "documentation_approach"),
+            "how do you coordinate with business stakeholders and development teams?": ("leadership", "stakeholder_coordination"),
+            "how do you handle requirement changes and defect clarifications?": ("leadership", "defect_and_change_management"),
+            "what process improvements have you introduced in analysis or delivery?": ("leadership", "process_improvements"),
+            # Software Development Manager questions
+            "what is the size and structure of the teams you manage?": ("leadership", "org_scope"),
+            "how do you manage planning, execution, and release governance?": ("leadership", "delivery_model"),
+            "how do you handle hiring, coaching, and performance management?": ("leadership", "people_management"),
+            "how do you track risks, dependencies, and cross-team blockers?": ("leadership", "risk_and_dependencies"),
+            "what business or customer outcomes did your teams deliver?": ("leadership", "delivery_outcomes"),
+            # Business Intelligence Advisor questions
+            "which bi tools and platforms do you use most often?": ("skills", "bi_stack"),
+            "how do you design kpi dashboards for different business audiences?": ("leadership", "dashboard_strategy"),
+            "what is your approach to data modeling and semantic layer design?": ("leadership", "data_modeling"),
+            "how do you ensure data quality, consistency, and governance in reports?": ("leadership", "data_governance"),
+            "can you share an example where your analytics influenced a key decision?": ("leadership", "decision_impact"),
         }
+        self._hydrate_question_bank_mappings()
+        self._hydrate_locale_question_aliases()
+
+    def resolve_target(self, question: str) -> tuple[str, str] | None:
+        normalized = (question or "").strip().lower()
+        if not normalized:
+            return None
+
+        target = self._mapping.get(normalized)
+        if target:
+            return target
+
+        return self._resolve_target_with_llm(normalized)
+
+    def _resolve_target_with_llm(self, normalized_question: str) -> tuple[str, str] | None:
+        """
+        LLM-assisted fallback for question->(section, field) mapping.
+
+        Uses the known question bank questions as candidates and asks the model
+        to select one exact candidate when wording differs.
+        """
+        if normalized_question in self._llm_question_cache:
+            return self._llm_question_cache[normalized_question]
+
+        if not self._llm_service or not self._llm_service.is_enabled():
+            self._llm_question_cache[normalized_question] = None
+            return None
+
+        candidates = [q for q in sorted(self._mapping.keys()) if q]
+        if not candidates:
+            self._llm_question_cache[normalized_question] = None
+            return None
+
+        # Keep prompt bounded for reliability and cost.
+        candidate_list = "\n".join(f"{idx + 1}. {q}" for idx, q in enumerate(candidates[:200]))
+        prompt = (
+            "Map the INPUT_QUESTION to exactly one candidate question.\n"
+            "If no reliable match exists, return index 0.\n"
+            "Return strict JSON object with keys: index (int), confidence (0..1).\n\n"
+            f"INPUT_QUESTION: {normalized_question}\n\n"
+            f"CANDIDATES:\n{candidate_list}"
+        )
+
+        raw = self._llm_service.call(
+            prompt=prompt,
+            system_message=(
+                "You are a strict question matching engine for CV questionnaire prompts. "
+                "Never invent candidates. Choose only from the list."
+            ),
+            temperature=0.0,
+            max_tokens=120,
+            json_mode=True,
+        )
+
+        if not raw:
+            self._llm_question_cache[normalized_question] = None
+            return None
+
+        try:
+            parsed = json.loads(raw)
+            index = int(parsed.get("index", 0) or 0)
+            confidence = float(parsed.get("confidence", 0.0) or 0.0)
+        except Exception:
+            self._llm_question_cache[normalized_question] = None
+            return None
+
+        if index <= 0 or index > min(len(candidates), 200) or confidence < 0.7:
+            self._llm_question_cache[normalized_question] = None
+            return None
+
+        matched_question = candidates[index - 1]
+        target = self._mapping.get(matched_question)
+        self._llm_question_cache[normalized_question] = target
+        return target
+
+    def _hydrate_question_bank_mappings(self) -> None:
+        """Load direct question -> (section, field) mappings from question_bank.yaml."""
+        try:
+            root = Path(__file__).resolve().parents[3]
+            question_bank_path = root / "config" / "questionnaire" / "question_bank.yaml"
+            if not question_bank_path.exists():
+                return
+
+            with question_bank_path.open("r", encoding="utf-8") as f:
+                question_bank = yaml.safe_load(f) or {}
+
+            for section_items in question_bank.values():
+                if not isinstance(section_items, list):
+                    continue
+                for item in section_items:
+                    if not isinstance(item, dict):
+                        continue
+
+                    qid = str(item.get("id") or "").strip()
+                    question_text = str(item.get("question") or "").strip().lower()
+                    section = str(item.get("section") or "").strip()
+                    field = str(item.get("field") or "").strip()
+
+                    if not question_text or not section or not field:
+                        continue
+
+                    target = (section, field)
+                    self._mapping[question_text] = target
+                    if qid:
+                        self._id_to_target[qid] = target
+        except Exception:
+            # Question bank hydration is best-effort; explicit fallback mappings remain.
+            return
+
+    def _hydrate_locale_question_aliases(self) -> None:
+        try:
+            root = Path(__file__).resolve().parents[3]
+            question_bank_path = root / "config" / "questionnaire" / "question_bank.yaml"
+            locales_dir = root / "config" / "questionnaire" / "locales"
+
+            if not question_bank_path.exists() or not locales_dir.exists():
+                return
+
+            with question_bank_path.open("r", encoding="utf-8") as f:
+                question_bank = yaml.safe_load(f) or {}
+
+            if not self._id_to_target:
+                for section_items in question_bank.values():
+                    if not isinstance(section_items, list):
+                        continue
+                    for item in section_items:
+                        if not isinstance(item, dict):
+                            continue
+                        qid = str(item.get("id") or "").strip()
+                        source_question = str(item.get("question") or "").strip().lower()
+                        if not qid or not source_question:
+                            continue
+                        target = self._mapping.get(source_question)
+                        if target:
+                            self._id_to_target[qid] = target
+
+            for locale_file in locales_dir.glob("*.yaml"):
+                with locale_file.open("r", encoding="utf-8") as f:
+                    locale_payload = yaml.safe_load(f) or {}
+                localized_questions = locale_payload.get("questions", {})
+                if not isinstance(localized_questions, dict):
+                    continue
+
+                for qid, localized_question in localized_questions.items():
+                    target = self._id_to_target.get(str(qid))
+                    if not target:
+                        continue
+                    normalized = str(localized_question or "").strip().lower()
+                    if normalized and normalized not in self._mapping:
+                        self._mapping[normalized] = target
+        except Exception:
+            # Locale alias hydration is best-effort. Base English mapping remains authoritative.
+            return
 
     def apply_answer(self, cv_data: Dict[str, Any], question: str, answer: str) -> Dict[str, Any]:
         print(f"DEBUG MAPPER: apply_answer called with question='{question}', answer='{answer[:100]}...'")
         normalized = question.strip().lower()
         print(f"DEBUG MAPPER: normalized question='{normalized}'")
 
-        target = self._mapping.get(normalized)
+        target = self.resolve_target(normalized)
 
         # For explicit questionnaire prompts, always prefer deterministic field mapping.
         # Free-form conversational extraction is reserved for unmapped questions only.

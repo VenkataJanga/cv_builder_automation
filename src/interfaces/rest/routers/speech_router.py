@@ -9,10 +9,12 @@ from src.application.services.speech_service import SpeechService
 from src.application.services.audio_cv_service import AudioCVService
 from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.core.config.settings import settings
+from src.core.i18n import t
 from src.domain.cv.enums import SourceType
 from src.core.constants import MAX_AUDIO_FILE_SIZE_MB
 from src.core.logging.logger import get_logger
 from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
+from src.interfaces.rest.dependencies.locale_dependencies import get_request_locale
 
 logger = get_logger(__name__)
 
@@ -46,12 +48,12 @@ def _log_speech_event(
     )
 
 
-def _ensure_file_size_limit(file_bytes: bytes) -> None:
+def _ensure_file_size_limit(file_bytes: bytes, locale: str | None = None) -> None:
     max_bytes = MAX_AUDIO_FILE_SIZE_MB * 1024 * 1024
     if len(file_bytes) > max_bytes:
         raise HTTPException(
             status_code=413,
-            detail=f"File too large. Maximum allowed size is {MAX_AUDIO_FILE_SIZE_MB} MB.",
+            detail=t("api.speech.file_too_large", locale=locale, max_mb=MAX_AUDIO_FILE_SIZE_MB),
         )
 
 
@@ -105,6 +107,7 @@ async def transcribe_audio(
     file: UploadFile = File(...),
     language: str | None = Form(None),
     session_id: str | None = Form(None),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Phase 3: Audio transcription with canonical schema integration.
@@ -120,7 +123,7 @@ async def transcribe_audio(
 
     file_content = await file.read()
     try:
-        _ensure_file_size_limit(file_content)
+        _ensure_file_size_limit(file_content, locale=locale)
     except HTTPException as exc:
         _log_speech_event(
             operation="audio_upload_transcribe",
@@ -151,7 +154,7 @@ async def transcribe_audio(
             error_message=str(exc),
             payload={"filename": file.filename},
         )
-        raise HTTPException(status_code=502, detail=f"Audio transcription failed: {str(exc)}")
+        raise HTTPException(status_code=502, detail=t("api.speech.transcribe_failed", locale=locale, error=str(exc)))
     finally:
         # Audio upload is temporary input; cleanup prevents storage bloat over time.
         try:
@@ -172,9 +175,9 @@ async def transcribe_audio(
                 http_status=400,
                 error_message="Invalid session_id",
             )
-            return {"error": "Invalid session_id"}
+            return {"error": t("api.speech.invalid_session", locale=locale)}
     else:
-        new_session = conversation_service.start_session()
+        new_session = conversation_service.start_session(locale=locale)
         session_id = new_session["session_id"]
         session = conversation_service.get_session(session_id)
         transcription_result["question"] = new_session.get("question")
@@ -240,6 +243,7 @@ def correct_transcript(
     transcript: str = Form(...),
     corrected_text: str | None = Form(None),
     session_id: str | None = Form(None),
+    locale: str = Depends(get_request_locale),
 ):
     """
     Phase 3: Manual transcript correction with canonical schema integration.
@@ -264,7 +268,7 @@ def correct_transcript(
             http_status=502,
             error_message=str(exc),
         )
-        raise HTTPException(status_code=502, detail=f"Transcript correction failed: {str(exc)}")
+        raise HTTPException(status_code=502, detail=t("api.speech.correction_failed", locale=locale, error=str(exc)))
 
     # Handle session
     if session_id:
@@ -278,9 +282,9 @@ def correct_transcript(
                 http_status=400,
                 error_message="Invalid session_id",
             )
-            return {"error": "Invalid session_id"}
+            return {"error": t("api.speech.invalid_session", locale=locale)}
     else:
-        new_session = conversation_service.start_session()
+        new_session = conversation_service.start_session(locale=locale)
         session_id = new_session["session_id"]
         session = conversation_service.get_session(session_id)
         correction_result["question"] = new_session.get("question")

@@ -43,6 +43,7 @@ def get_current_user(
             user_id=DEV_USER_ID,
             username=DEV_USERNAME,
             email=DEV_EMAIL,
+            preferred_locale=settings.DEFAULT_LOCALE,
             full_name=DEV_FULL_NAME,
             role=Role.ADMIN,
         )
@@ -62,6 +63,7 @@ def get_current_user(
             user_id=user.id,
             username=user.username,
             email=user.email,
+            preferred_locale=user.preferred_locale,
             full_name=user.full_name,
             role=user.role,
             is_active=user.is_active,
@@ -96,6 +98,7 @@ def get_current_user(
         user_id=user.id,
         username=user.username,
         email=user.email,
+        preferred_locale=user.preferred_locale,
         full_name=user.full_name,
         role=user.role,
         is_active=user.is_active,

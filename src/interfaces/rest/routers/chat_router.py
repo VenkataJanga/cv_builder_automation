@@ -5,6 +5,7 @@ from src.application.services.conversation_service import ConversationService
 from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.domain.cv.services.merge_cv import MergeCVService
 from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
+from src.interfaces.rest.dependencies.locale_dependencies import get_request_locale
 
 router = APIRouter(prefix="/chat", tags=["chat"], dependencies=[Depends(get_current_user)])
 
@@ -39,14 +40,14 @@ class ChatRequest(BaseModel):
 
 
 @router.post("")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, locale: str = Depends(get_request_locale)):
     """
     Chat endpoint for conversational CV building
     """
     try:
         # If no session_id provided, create a new session and return the first question
         if not request.session_id or request.session_id == "default-session":
-            session = conversation_service.start_session()
+            session = conversation_service.start_session(locale=locale)
             session_id = session.get("session_id")
             _log_conversation_event(
                 operation="chat_start_session",
@@ -64,7 +65,7 @@ async def chat(request: ChatRequest):
         session_id = request.session_id
         session = conversation_service.get_session(session_id)
         if "error" in session:
-            session = conversation_service.start_session()
+            session = conversation_service.start_session(locale=locale)
             session_id = session.get("session_id")
             _log_conversation_event(
                 operation="chat_session_recover",
@@ -119,12 +120,15 @@ async def chat(request: ChatRequest):
 
 
 @router.post("/conversations/session")
-async def create_conversation_session(request: dict = None):
+async def create_conversation_session(
+    request: dict = None,
+    locale: str = Depends(get_request_locale),
+):
     """
     Create a new conversation session - compatibility endpoint for the UI
     """
     try:
-        session = conversation_service.start_session()
+        session = conversation_service.start_session(locale=locale)
         _log_conversation_event(
             operation="conversation_create_session",
             status="success",

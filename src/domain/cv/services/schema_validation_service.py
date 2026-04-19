@@ -10,6 +10,8 @@ Date: 2026-04-12
 
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+
+from src.core.i18n import t
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 
 
@@ -102,7 +104,7 @@ class SchemaValidationService:
         "education": 0.10     # 10% - Educational background
     }
     
-    def validate_for_save(self, canonical_cv: CanonicalCVSchema) -> ValidationResult:
+    def validate_for_save(self, canonical_cv: CanonicalCVSchema, locale: str | None = None) -> ValidationResult:
         """
         Validate CV for save operation.
         
@@ -131,9 +133,9 @@ class SchemaValidationService:
         
         warnings = []
         if missing_mandatory:
-            warnings.append(f"Missing mandatory fields: {', '.join(missing_mandatory)}")
+            warnings.append(t("validation.save.missing_mandatory", locale=locale, fields=", ".join(missing_mandatory)))
         if completeness < 50:
-            warnings.append("CV is less than 50% complete")
+            warnings.append(t("validation.save.less_than_50", locale=locale))
             
         return ValidationResult(
             success=True,
@@ -147,7 +149,7 @@ class SchemaValidationService:
             validation_warnings=warnings
         )
     
-    def validate_for_save_and_validate(self, canonical_cv: CanonicalCVSchema) -> ValidationResult:
+    def validate_for_save_and_validate(self, canonical_cv: CanonicalCVSchema, locale: str | None = None) -> ValidationResult:
         """
         Validate CV for save and validate operation.
         
@@ -180,21 +182,21 @@ class SchemaValidationService:
         
         # Check for critical missing sections
         if not self._has_experience_data(cv_dict):
-            warnings.append("No work experience or projects found")
+            warnings.append(t("validation.save_validate.no_experience", locale=locale))
         
         if not self._has_skills_data(cv_dict):
-            warnings.append("No skills information found")
+            warnings.append(t("validation.save_validate.no_skills", locale=locale))
             
         if not self._has_education_data(cv_dict):
-            warnings.append("No education information found")
+            warnings.append(t("validation.save_validate.no_education", locale=locale))
         
         # Mandatory field warnings
         if missing_mandatory:
-            warnings.append(f"Required for export: {', '.join(missing_mandatory)}")
+            warnings.append(t("validation.save_validate.required_for_export", locale=locale, fields=", ".join(missing_mandatory)))
         
         # Recommended field suggestions
         if missing_recommended:
-            warnings.append(f"Recommended to add: {', '.join(missing_recommended[:3])}")
+            warnings.append(t("validation.save_validate.recommended_add", locale=locale, fields=", ".join(missing_recommended[:3])))
         
         return ValidationResult(
             success=True,
@@ -209,7 +211,7 @@ class SchemaValidationService:
             validation_warnings=warnings
         )
     
-    def validate_for_export(self, canonical_cv: CanonicalCVSchema) -> ValidationResult:
+    def validate_for_export(self, canonical_cv: CanonicalCVSchema, locale: str | None = None) -> ValidationResult:
         """
         Validate CV for export operation.
         
@@ -240,20 +242,20 @@ class SchemaValidationService:
         
         # Check mandatory fields
         if missing_mandatory:
-            errors.append(f"Missing required fields: {', '.join(missing_mandatory)}")
-            blocked_reason = "Cannot export CV without mandatory fields"
+            errors.append(t("validation.export.missing_required", locale=locale, fields=", ".join(missing_mandatory)))
+            blocked_reason = t("validation.export.blocked_no_mandatory", locale=locale)
         
         # Check minimum experience requirement
         if not self._has_experience_data(cv_dict):
-            errors.append("At least one work experience or project is required for export")
+            errors.append(t("validation.export.no_experience_required", locale=locale))
             if not blocked_reason:
-                blocked_reason = "Cannot export CV without work experience"
+                blocked_reason = t("validation.export.blocked_no_experience", locale=locale)
         
         # Check minimum completeness
         if completeness < 40:
-            errors.append(f"CV is only {completeness:.1f}% complete (minimum 40% required)")
+            errors.append(t("validation.export.too_incomplete", locale=locale, completeness=completeness))
             if not blocked_reason:
-                blocked_reason = "CV not sufficiently complete for export"
+                blocked_reason = t("validation.export.blocked_not_complete", locale=locale)
         
         can_export = len(errors) == 0
         

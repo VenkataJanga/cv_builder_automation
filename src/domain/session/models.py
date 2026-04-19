@@ -39,6 +39,8 @@ class SessionMetadata(BaseModel):
 
     user_id: Optional[str] = None
     tenant_id: Optional[str] = None
+    ui_locale: str = "en"
+    content_locale: str = "en"
     client_app: str = ""
     tags: Dict[str, str] = Field(default_factory=dict)
 

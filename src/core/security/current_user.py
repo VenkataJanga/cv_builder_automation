@@ -9,6 +9,7 @@ class CurrentUser(BaseModel):
     user_id: int
     username: str
     email: str
+    preferred_locale: str = "en"
     full_name: str | None = None
     role: Role = Role.USER
     is_active: bool = True

@@ -5,6 +5,8 @@ from typing import Any, Dict
 
 import yaml
 
+from src.core.i18n import get_default_locale, normalize_locale
+
 
 class QuestionnaireLoader:
     def __init__(self, base_path: str = "config/questionnaire") -> None:
@@ -36,3 +38,14 @@ class QuestionnaireLoader:
 
     def load_settings(self) -> Dict[str, Any]:
         return self.load_yaml("questionnaire_settings.yaml")
+
+    def load_locale_catalog(self, locale: str | None = None) -> Dict[str, Any]:
+        resolved_locale = normalize_locale(locale) or get_default_locale()
+        locales_dir = self.base_path / "locales"
+        locale_file = locales_dir / f"{resolved_locale}.yaml"
+        if locale_file.exists():
+            with locale_file.open("r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            if isinstance(data, dict):
+                return data
+        return {}

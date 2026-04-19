@@ -17,32 +17,36 @@
                 <img src="/static/img/nttdata_logo.png" alt="NTT DATA" class="header-logo" />
                 <div class="header-logo-divider"></div>
                 <div class="header-text">
-                    <h1 class="app-title">CV Builder Automation</h1>
-                    <p class="app-subtitle">Build your professional CV through conversation, document upload, or voice interaction</p>
+                    <h1 id="appTitle" class="app-title" data-i18n="app.title">CV Builder Automation</h1>
+                    <p id="appSubtitle" class="app-subtitle" data-i18n="app.subtitle">Build your professional CV through conversation, document upload, or voice interaction</p>
                 </div>
             </div>
             <div id="userInfoBar" class="user-info-bar" style="display: none;">
                 <span id="userInfoText" class="user-info-text"></span>
-                <button id="clearSessionBtn" class="btn btn-secondary" aria-label="Clear current session">Clear Session</button>
-                <button id="logoutBtn" class="btn btn-logout" aria-label="Sign out">Sign Out</button>
+                <select id="languageSelect" class="btn btn-secondary" aria-label="Language selector">
+                    <option value="en" selected>English</option>
+                    <option value="de">Deutsch</option>
+                </select>
+                <button id="clearSessionBtn" class="btn btn-secondary" data-i18n="ui.clearSession" data-i18n-aria-label="ui.clearSession">Clear Session</button>
+                <button id="logoutBtn" class="btn btn-logout" data-i18n="ui.signOut" data-i18n-aria-label="ui.signOut">Sign Out</button>
             </div>
         </header>
 
         <main class="main-grid">
             <!-- Session Management -->
             <div class="section session-section" role="region" aria-label="Session Management" hidden>
-                <h2>Session Management</h2>
+                <h2 data-i18n="ui.sessionManagement">Session Management</h2>
                 <div class="session-controls">
-                    <input type="text" id="sessionId" placeholder="Enter session ID or leave blank for new session" aria-label="Session ID input">
-                    <button id="createSession" class="btn btn-primary" aria-label="Create new CV building session">Create New Session</button>
-                    <button id="loadSession" class="btn btn-secondary" aria-label="Load existing session">Load Session</button>
+                    <input type="text" id="sessionId" placeholder="Enter session ID or leave blank for new session" data-i18n-placeholder="session.enterSessionId" aria-label="Session ID input">
+                    <button id="createSession" class="btn btn-primary" data-i18n="ui.createNewSession" data-i18n-aria-label="ui.createNewSession">Create New Session</button>
+                    <button id="loadSession" class="btn btn-secondary" data-i18n="ui.loadSession" data-i18n-aria-label="ui.loadSession">Load Session</button>
                 </div>
                 <div id="currentSession" class="current-session" aria-live="polite"></div>
             </div>
 
             <!-- Chat Interface -->
             <div class="section chat-section" role="region" aria-label="Chat Conversation">
-                <h2>💬 Conversation</h2>
+                <h2 data-i18n="ui.chatTitle">💬 Conversation</h2>
                 <div id="chatContainer" class="chat-container">
                     <div id="chatMessages" class="chat-messages" role="log" aria-live="polite" aria-label="Chat messages">
                         <div class="message bot-message">
@@ -59,8 +63,8 @@
                     </div>
                     <div class="chat-input-area">
                         <div class="input-group">
-                            <input type="text" id="chatInput" placeholder="Type your message here..." maxlength="1000" aria-label="Chat message input">
-                            <button id="sendChatBtn" class="btn btn-send" aria-label="Send chat message">Send</button>
+                            <input type="text" id="chatInput" placeholder="Type your message here..." data-i18n-placeholder="ui.chatInputPlaceholder" maxlength="1000" aria-label="Chat message input">
+                            <button id="sendChatBtn" class="btn btn-send" data-i18n="ui.send" data-i18n-aria-label="ui.send">Send</button>
                         </div>
                     </div>
                 </div>
@@ -68,23 +72,23 @@
 
             <!-- Audio Section -->
             <div class="section audio-section" role="region" aria-label="Voice Interaction">
-                <h2>🎤 Voice Interaction</h2>
+                <h2 data-i18n="ui.voiceTitle">🎤 Voice Interaction</h2>
                 <div class="audio-controls">
                     <div class="record-section">
                         <button id="recordBtn" class="btn btn-record" aria-label="Start or stop voice recording">
                             <span class="record-icon" aria-hidden="true">🔴</span>
-                            Start Recording
+                            <span data-i18n="ui.startRecording">Start Recording</span>
                         </button>
                         <div id="recordingStatus" class="recording-status" aria-live="polite"></div>
                         <audio id="audioPlayback" controls style="display: none;" aria-label="Audio playback"></audio>
                     </div>
                     <div class="upload-audio-section">
-                        <h3>Or upload audio file</h3>
+                        <h3 data-i18n="ui.uploadAudioTitle">Or upload audio file</h3>
                         <div class="audio-upload-area" id="audioUpload" role="button" tabindex="0" aria-label="Drag and drop area for audio files">
                             <div class="upload-content">
                                 <div class="upload-icon" aria-hidden="true">🎵</div>
-                                <p>Drag &amp; drop audio files here</p>
-                                <p>or <button class="btn-link" id="browseAudioFiles">browse audio files</button></p>
+                                <p data-i18n="ui.audioDropHint">Drag &amp; drop audio files here</p>
+                                <p>or <button class="btn-link" id="browseAudioFiles" data-i18n="ui.browseAudio">browse audio files</button></p>
                                 <input type="file" id="audioFileInput" accept=".mp3,.wav,.webm,.m4a,.ogg,.flac,.mp4,.mpeg,.mpga" hidden aria-label="Audio file input">
                             </div>
                         </div>
@@ -98,15 +102,15 @@
 
             <!-- CV Preview -->
             <div class="section preview-section" role="region" aria-label="CV Preview">
-                <h2>👁️ CV Preview</h2>
+                <h2 data-i18n="ui.previewTitle">👁️ CV Preview</h2>
                 <div class="preview-controls">
-                    <button id="refreshPreview" class="btn btn-secondary" aria-label="Refresh CV preview">🔄 Refresh Preview</button>
-                    <button id="toggleEditMode" class="btn btn-secondary" aria-label="Toggle CV edit mode"><span aria-hidden="true">✏️</span> Edit CV</button>
-                    <button id="saveAndValidate" class="btn btn-primary" aria-label="Save and validate CV"><span aria-hidden="true">💾</span> Save & Validate</button>
-                    <button id="exportCV" class="btn btn-success btn-disabled" disabled title="💾 Click 'Save & Validate' first" aria-label="Export CV (requires validation first)">📥 Export CV</button>
+                    <button id="refreshPreview" class="btn btn-secondary" data-i18n="ui.refreshPreview" data-i18n-aria-label="ui.refreshPreview">🔄 Refresh Preview</button>
+                    <button id="toggleEditMode" class="btn btn-secondary" data-i18n="ui.editCv" data-i18n-aria-label="ui.editCv"><span aria-hidden="true">✏️</span> Edit CV</button>
+                    <button id="saveAndValidate" class="btn btn-primary" data-i18n="ui.saveAndValidate" data-i18n-aria-label="ui.saveAndValidate"><span aria-hidden="true">💾</span> Save &amp; Validate</button>
+                    <button id="exportCV" class="btn btn-success btn-disabled" disabled title="💾 Click 'Save & Validate' first" data-i18n="ui.exportCv" data-i18n-title="export.tipSaveValidate" data-i18n-aria-label="ui.exportCv">📥 Export CV</button>
                     <div id="reviewStatusBadge" class="review-status-badge" style="display: none;">
                         <span class="status-icon">⏳</span>
-                        <span class="status-text">Pending Review</span>
+                        <span class="status-text" data-i18n="edit.statusPending">Pending Review</span>
                     </div>
                 </div>
                 
@@ -114,7 +118,7 @@
                 <div id="validationFeedback" class="validation-feedback validation-success" style="display: none;">
                     <div class="validation-header">
                         <span class="validation-icon">✓</span>
-                        <h3 style="margin: 0; color: #1f2937;">Validation Results</h3>
+                        <h3 style="margin: 0; color: #1f2937;" data-i18n="ui.validationResults">Validation Results</h3>
                     </div>
                     <div id="validationContent" class="validation-content">
                         <!-- Validation feedback will be populated dynamically by JavaScript -->
@@ -131,12 +135,12 @@
 
             <!-- File Upload Section -->
             <div class="section upload-section" role="region" aria-label="Document Upload">
-                <h2>📄 Document Upload</h2>
+                <h2 data-i18n="ui.documentUploadTitle">📄 Document Upload</h2>
                 <div class="upload-area" id="documentUpload" role="button" tabindex="0" aria-label="Drag and drop area for CV documents">
                     <div class="upload-content">
                         <div class="upload-icon" aria-hidden="true">📁</div>
-                        <p>Drag &amp; drop PDF, DOCX, or DOC files here</p>
-                        <p>or <button class="btn-link" id="browseFiles">browse files</button></p>
+                        <p data-i18n="ui.documentDropHint">Drag &amp; drop PDF, DOCX, or DOC files here</p>
+                        <p>or <button class="btn-link" id="browseFiles" data-i18n="ui.browseFiles">browse files</button></p>
                         <input type="file" id="fileInput" accept=".pdf,.docx,.doc" hidden aria-label="File input for CV documents">
                     </div>
                 </div>
@@ -150,16 +154,16 @@
         <!-- Status Bar -->
         <div class="status-bar">
             <div class="status-item">
-                <span class="status-label">Server:</span>
-                <span id="serverStatus" class="status-value">Checking...</span>
+                <span id="statusLabelServer" class="status-label" data-i18n="app.statusServer">Server:</span>
+                <span id="serverStatus" class="status-value" data-i18n="ui.checking">Checking...</span>
             </div>
             <div class="status-item">
-                <span class="status-label">Session:</span>
-                <span id="sessionStatus" class="status-value">No active session</span>
+                <span id="statusLabelSession" class="status-label" data-i18n="app.statusSession">Session:</span>
+                <span id="sessionStatus" class="status-value" data-i18n="app.noActiveSession">No active session</span>
             </div>
             <div class="status-item">
-                <span class="status-label">Last Update:</span>
-                <span id="lastUpdate" class="status-value">Never</span>
+                <span id="statusLabelLastUpdate" class="status-label" data-i18n="app.statusLastUpdate">Last Update:</span>
+                <span id="lastUpdate" class="status-value" data-i18n="ui.never">Never</span>
             </div>
         </div>
 
@@ -167,14 +171,14 @@
         <div id="exportModal" class="modal" style="display: none;" role="dialog" aria-labelledby="exportModalTitle" aria-modal="true">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h3 id="exportModalTitle">Export CV</h3>
+                    <h3 id="exportModalTitle" data-i18n="ui.exportModalTitle">Export CV</h3>
                     <button class="modal-close" aria-label="Close export modal">&times;</button>
                 </div>
                 <div class="modal-body">
                     <div class="export-options">
-                        <button class="btn btn-export" data-format="pdf" aria-label="Export CV as PDF">Export as PDF</button>
-                        <button class="btn btn-export" data-format="docx" aria-label="Export CV as DOCX">Export as DOCX</button>
-                        <button class="btn btn-export" data-format="json" aria-label="Export CV as JSON">Export as JSON</button>
+                        <button class="btn btn-export" data-format="pdf" data-i18n="ui.exportAsPdf" data-i18n-aria-label="ui.exportAsPdf">Export as PDF</button>
+                        <button class="btn btn-export" data-format="docx" data-i18n="ui.exportAsDocx" data-i18n-aria-label="ui.exportAsDocx">Export as DOCX</button>
+                        <button class="btn btn-export" data-format="json" data-i18n="ui.exportAsJson" data-i18n-aria-label="ui.exportAsJson">Export as JSON</button>
                     </div>
                 </div>
             </div>
@@ -189,28 +193,29 @@
     <div id="loginOverlay" class="login-overlay" style="display: none;" role="dialog" aria-labelledby="loginTitle" aria-modal="true">
         <div class="login-card">
             <div class="login-header">
-                <h2 id="loginTitle">🔐 Sign In</h2>
+                <h2 id="loginTitle" data-i18n="ui.loginTitle">🔐 Sign In</h2>
                 <p>CV Builder Automation</p>
             </div>
             <form id="loginForm" class="login-form" autocomplete="on">
                 <div class="login-field">
-                    <label for="loginUsername">Username</label>
-                    <input type="text" id="loginUsername" name="username" placeholder="e.g. venkata.janga" autocomplete="username" required>
+                    <label for="loginUsername" data-i18n="ui.loginUsername">Username</label>
+                    <input type="text" id="loginUsername" name="username" placeholder="e.g. venkata.janga" data-i18n-placeholder="ui.usernamePlaceholder" autocomplete="username" required>
                 </div>
                 <div class="login-field">
-                    <label for="loginPassword">Password</label>
-                    <input type="password" id="loginPassword" name="password" placeholder="Password" autocomplete="current-password" required>
+                    <label for="loginPassword" data-i18n="ui.loginPassword">Password</label>
+                    <input type="password" id="loginPassword" name="password" placeholder="Password" data-i18n-placeholder="ui.passwordPlaceholder" autocomplete="current-password" required>
                 </div>
                 <div id="loginError" class="login-error" style="display: none;"></div>
-                <button type="submit" id="loginBtn" class="btn btn-primary login-btn">Sign In</button>
+                <button type="submit" id="loginBtn" class="btn btn-primary login-btn" data-i18n="ui.loginBtn">Sign In</button>
             </form>
             <div class="login-hint">
-                <strong>Pilot accounts:</strong>
-                <code>Use a seeded username (for example venkata.janga) and your configured seed password</code>
+                <strong data-i18n="ui.loginHintTitle">Pilot accounts:</strong>
+                <code data-i18n="ui.loginHintBody">Use a seeded username (for example venkata.janga) and your configured seed password</code>
             </div>
         </div>
     </div>
 
-    <script src="/static/js/app.js?v=modern4"></script>
+    <script src="/static/js/localization.js?v=2"></script>
+    <script src="/static/js/app.js?v=modern8"></script>
 </body>
 </html>

@@ -56,7 +56,10 @@ class TemplateEngine:
         # Generate leadership lines
         leadership_lines = []
         for section_name, items in leadership.items():
-            for item in items:
+            normalized_items = items if isinstance(items, list) else [items]
+            for item in normalized_items:
+                if item in (None, ""):
+                    continue
                 leadership_lines.append(f"{section_name.replace('_', ' ').title()}: {item}")
 
         # Format skills for different representations

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 from src.application.services.conversation_service import ConversationService
 from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
+from src.interfaces.rest.dependencies.locale_dependencies import get_request_locale
 
 
 router = APIRouter(prefix="/session", tags=["session"], dependencies=[Depends(get_current_user)])
@@ -15,8 +16,8 @@ class AnswerRequest(BaseModel):
 
 
 @router.post("/start")
-def start_session():
-    return service.start_session()
+def start_session(locale: str = Depends(get_request_locale)):
+    return service.start_session(locale=locale)
 
 
 @router.post("/answer")

@@ -12,6 +12,7 @@ class User:
     email: str
     hashed_password: str
     role: Role = Role.USER
+    preferred_locale: str = "en"
     full_name: str | None = None
     is_active: bool = True
     created_at: datetime = field(default_factory=datetime.utcnow)

@@ -11,6 +11,7 @@ import logging
 from copy import deepcopy
 
 from pydantic import ValidationError
+from src.core.i18n import t
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 
 
@@ -84,7 +85,7 @@ class SchemaValidationService:
         audit["manualEdits"] = normalized_edits
         return cleaned
     
-    def validate(self, canonical_cv: Dict[str, Any] | CanonicalCVSchema) -> ValidationResult:
+    def validate(self, canonical_cv: Dict[str, Any] | CanonicalCVSchema, locale: str | None = None) -> ValidationResult:
         """
         Validate canonical CV against schema and business rules
         
@@ -97,7 +98,7 @@ class SchemaValidationService:
         if not canonical_cv:
             self.logger.error("Cannot validate: canonical_cv is None or empty")
             return ValidationResult(
-                errors=["No canonical CV data provided"],
+                errors=[t("api.validation.missing_canonical", locale=locale)],
                 can_export=False
             )
         
@@ -150,13 +151,13 @@ class SchemaValidationService:
                 else:
                     readable_errors.append(msg)
             return ValidationResult(
-                errors=readable_errors or ["Invalid CV structure. Please review the highlighted fields."],
+                errors=readable_errors or [t("validation.export.blocked_not_complete", locale=locale)],
                 can_export=False,
             )
         except Exception as e:
             self.logger.error(f"Validation error: {str(e)}", exc_info=True)
             return ValidationResult(
-                errors=["Unable to validate CV right now. Please try again."],
+                errors=[t("api.preview.preview_build_failed", locale=locale)],
                 can_export=False
             )
     

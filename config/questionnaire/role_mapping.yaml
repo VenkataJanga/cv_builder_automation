@@ -1,8 +1,15 @@
 role_mapping:
+  tech lead: tech_lead
   technical manager: technical_manager
   technology manager: technical_manager
   technical lead: technical_manager
   engineering manager: technical_manager
+  software development senior specialist: software_development_senior_specialist
+  software development analyst: software_development_analyst
+  sdm: software_development_manager
+  s.d.m: software_development_manager
+  software development manager: software_development_manager
+  business intelligence advisor: business_intelligence_advisor
   solution architect: solution_architect
   enterprise architect: solution_architect
   application architect: solution_architect

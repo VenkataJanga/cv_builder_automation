@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Dict, Optional
 
 from pydantic import ValidationError
@@ -107,6 +108,47 @@ class CVBuilderService:
             schema.experience.domainExperience = list(skills.get("domain_expertise", []) or [])
             schema.experience.industriesWorked = list(skills.get("domain_expertise", []) or [])
 
+            # Preserve non-canonical personal detail fields to avoid data loss.
+            extra_personal_fields = {
+                key: value
+                for key, value in personal.items()
+                if key
+                not in {
+                    "full_name",
+                    "current_title",
+                    "current_organization",
+                    "email",
+                    "phone",
+                    "employee_id",
+                    "linkedin",
+                    "total_experience",
+                    "location",
+                }
+                and value not in (None, "", [], {})
+            }
+            if extra_personal_fields:
+                schema.unmappedData["personal_details"] = extra_personal_fields
+
+            # Preserve non-canonical summary fields to avoid data loss.
+            extra_summary_fields = {
+                key: value
+                for key, value in summary.items()
+                if key not in {"professional_summary", "target_role"}
+                and value not in (None, "", [], {})
+            }
+            if extra_summary_fields:
+                schema.unmappedData["summary"] = extra_summary_fields
+
+            # Preserve role-specific skill fields that do not map to canonical SkillsModel keys.
+            extra_skill_fields = {
+                key: value
+                for key, value in skills.items()
+                if key not in {"primary_skills", "secondary_skills", "tools_and_platforms", "domain_expertise"}
+                and value not in (None, "", [], {})
+            }
+            if extra_skill_fields:
+                schema.unmappedData["skills"] = extra_skill_fields
+
             for education_entry in cv_data.get("education", []) or []:
                 if not isinstance(education_entry, dict):
                     continue
@@ -136,6 +178,38 @@ class CVBuilderService:
                 if not certification:
                     continue
                 schema.certifications.append(CertificationModel(name=str(certification)))
+
+            # Transfer leadership data to unmappedData for preservation (Phase 4 fallback)
+            leadership_data = cv_data.get("leadership", {})
+            if leadership_data and isinstance(leadership_data, dict):
+                schema.unmappedData["leadership"] = leadership_data
+
+            # Preserve any additional questionnaire sections not projected into canonical fields.
+            for section_name, section_value in cv_data.items():
+                if section_name in {
+                    "personal_details",
+                    "summary",
+                    "skills",
+                    "work_experience",
+                    "project_experience",
+                    "certifications",
+                    "education",
+                    "publications",
+                    "awards",
+                    "languages",
+                    "leadership",
+                    "target_role",
+                    "schema_version",
+                }:
+                    continue
+
+                if section_value in (None, "", [], {}):
+                    continue
+
+                schema.unmappedData[section_name] = section_value
+
+            # Keep full questionnaire snapshot for strict no-data-loss guarantees.
+            schema.sourceSnapshots["questionnaire_cv_data"] = deepcopy(cv_data)
 
             return CanonicalCVSchema(**schema.model_dump())
         except ValidationError:

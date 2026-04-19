@@ -11,6 +11,7 @@ from src.ai.services.llm_enhancement_service import LLMEnhancementService
 from src.ai.services.langsmith_service import LangSmithService
 from src.ai.services.extraction_service import ExtractionService
 from src.core.config.settings import settings
+from src.core.i18n import resolve_locale
 from src.questionnaire.answer_analyzer import AnswerAnalyzer
 from src.questionnaire.followup_engine import FollowupEngine
 from src.questionnaire.question_selector import select_initial_questions, select_questions
@@ -27,7 +28,7 @@ from src.domain.session import (
     SessionSourceType,
 )
 from src.infrastructure.persistence.mysql.database import SessionLocal
-from src.domain.session.models import CVSession
+from src.domain.session.models import CVSession, SessionMetadata
 
 
 def _build_session_repository():
@@ -204,9 +205,10 @@ class ConversationService:
 
         session["canonical_cv"] = canonical_cv
 
-    def start_session(self) -> Dict[str, Any]:
+    def start_session(self, locale: str | None = None) -> Dict[str, Any]:
         session_id = str(uuid4())
-        initial_questions = select_initial_questions()
+        resolved_locale = resolve_locale(explicit_locale=locale)
+        initial_questions = select_initial_questions(locale=resolved_locale)
 
         session_payload = {
             "session_id": session_id,
@@ -220,10 +222,12 @@ class ConversationService:
             "review_status": "pending",  # pending | in_progress | completed
             "has_user_edits": False,  # Track if user has made manual edits via review endpoint
             "validation_results": {},  # Phase 4: Store SchemaValidationService results (can_export, errors, warnings)
+            "locale": resolved_locale,
         }
         self.save_session(session_id, session_payload)
         return {
             "session_id": session_id,
+            "locale": resolved_locale,
             "question": initial_questions[0] if initial_questions else "What is your full name?",
         }
 
@@ -272,7 +276,7 @@ class ConversationService:
             # Move to role-specific questions after initial onboarding
             role = session.get("role") or resolve_role(answer)
             session["role"] = role
-            role_questions = select_questions(role)
+            role_questions = select_questions(role, locale=session.get("locale"))
             asked_questions = {q.strip().lower() for q in session["answers"].keys()}
             session["questions"] = [q for q in role_questions if q.strip().lower() not in asked_questions]
             session["step"] = "questions"
@@ -295,7 +299,7 @@ class ConversationService:
 
         if session["step"] == "role":
             role = resolve_role(answer)
-            questions = select_questions(role)
+            questions = select_questions(role, locale=session.get("locale"))
 
             session["role"] = role
             session["questions"] = questions
@@ -331,12 +335,23 @@ class ConversationService:
             )
 
             # Optional LLM extraction step (Phase 5)
-            # This enriches cv_data with extracted structured fields if enabled
-            session["cv_data"], extraction_result = self._try_apply_extraction(
-                current_question,
-                answer,
-                session["cv_data"],
+            # Skip LLM extraction for structured questionnaire questions that already
+            # have a deterministic mapper target — the mapper handles these correctly and
+            # LLM extraction on neighbouring answers can corrupt already-set skill fields
+            # (e.g. tools_and_platforms answer triggering extraction before primary_skills
+            # is answered, causing the LLM to pre-populate primary_skills incorrectly).
+            _q_is_mapped = (
+                current_question.strip().lower()
+                in self.cv_builder_service.mapper._mapping
             )
+            if _q_is_mapped:
+                extraction_result = None
+            else:
+                session["cv_data"], extraction_result = self._try_apply_extraction(
+                    current_question,
+                    answer,
+                    session["cv_data"],
+                )
 
             role = session.get("role")
             # LLM should only be used for transcript enhancement, not CV data enhancement
@@ -344,13 +359,17 @@ class ConversationService:
 
             analysis = self.answer_analyzer.analyze(current_question, answer, cv_data=session["cv_data"])
             context = self.retrieval_service.get_context(current_question, top_k=3)
-            validation = self.validation_service.validate(session["cv_data"])
+            validation = self.validation_service.validate(
+                session["cv_data"],
+                locale=session.get("locale"),
+            )
             followup = self.followup_engine.generate_followup(
                 current_question,
                 answer,
                 role=role,
                 analysis=analysis,
                 cv_data=session["cv_data"],
+                locale=session.get("locale"),
             )
 
             trace = self.langsmith_service.trace(
@@ -516,10 +535,31 @@ class ConversationService:
             )
         except Exception:
             # If the session does not exist yet, initialize and persist it.
+            metadata_payload = session_data.get("metadata")
+            if not isinstance(metadata_payload, dict):
+                metadata_payload = {}
+
+            resolved_ui_locale = resolve_locale(
+                explicit_locale=session_data.get("locale"),
+                session_ui_locale=metadata_payload.get("ui_locale"),
+            )
+            resolved_content_locale = resolve_locale(
+                explicit_locale=metadata_payload.get("content_locale"),
+                session_ui_locale=resolved_ui_locale,
+            )
+
             created = _SESSION_SERVICE.initialize_session(
                 session_id=session_id,
                 canonical_cv=session_data.get("canonical_cv", {}),
                 workflow_state=workflow_state,
+                metadata=SessionMetadata(
+                    user_id=metadata_payload.get("user_id"),
+                    tenant_id=metadata_payload.get("tenant_id"),
+                    ui_locale=resolved_ui_locale,
+                    content_locale=resolved_content_locale,
+                    client_app=str(metadata_payload.get("client_app") or ""),
+                    tags=metadata_payload.get("tags") if isinstance(metadata_payload.get("tags"), dict) else {},
+                ),
             )
             created.validation_results = session_data.get("validation_results", {})
             created.add_source_event(SessionSourceType.MANUAL_EDIT, description="session_create")
@@ -554,6 +594,8 @@ class ConversationService:
         payload["session_id"] = persisted.session_id
         payload["canonical_cv"] = persisted.canonical_cv
         payload["validation_results"] = persisted.validation_results
+        payload["locale"] = persisted.metadata.ui_locale
+        payload["metadata"] = persisted.metadata.model_dump(mode="json")
         payload.setdefault("validation", persisted.validation_results)
         payload.setdefault("review_status", payload.get("review_status", "pending"))
         return payload

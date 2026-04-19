@@ -1,0 +1,43 @@
+followup:
+  more_details: "Konnten Sie bitte mehr Details angeben?"
+  expand_summary: "Konnten Sie diese Zusammenfassung in 2-3 formalen Zeilen mit Rollenfokus und Starken erweitern?"
+  add_skills: "Bitte nennen Sie weitere Kenntnisse, Tools, Plattformen und Frameworks, die fur Ihre Rolle relevant sind."
+  quantify_achievement: "Konnten Sie diesen Erfolg mit Wirkung, prozentualer Verbesserung, Einsparung oder Lieferergebnis quantifizieren?"
+  business_result: "Welches messbare Geschaftsergebnis wurde dadurch erzielt, zum Beispiel Effizienz, Einsparung, Qualitat oder Lieferverbesserung?"
+  describe_technical_leadership: "Konnten Sie den Systemtyp, die verwendeten Technologien und Ihre genaue technische Fuhrungsrolle beschreiben?"
+
+validation:
+  save:
+    missing_mandatory: "Fehlende Pflichtfelder: {fields}"
+    less_than_50: "Der Lebenslauf ist zu weniger als 50% vollstandig"
+  save_validate:
+    no_experience: "Keine Berufserfahrung oder Projekte gefunden"
+    no_skills: "Keine Angaben zu Kenntnissen gefunden"
+    no_education: "Keine Angaben zur Ausbildung gefunden"
+    required_for_export: "Fur den Export erforderlich: {fields}"
+    recommended_add: "Empfohlen hinzuzufugen: {fields}"
+  export:
+    missing_required: "Fehlende Pflichtfelder: {fields}"
+    blocked_no_mandatory: "Export ohne Pflichtfelder nicht moglich"
+    no_experience_required: "Fur den Export ist mindestens eine Berufserfahrung oder ein Projekt erforderlich"
+    blocked_no_experience: "Export ohne Berufserfahrung nicht moglich"
+    too_incomplete: "Der Lebenslauf ist nur zu {completeness:.1f}% vollstandig (mindestens 40% erforderlich)"
+    blocked_not_complete: "Der Lebenslauf ist fur den Export nicht ausreichend vollstandig"
+  extraction:
+    low_overall: "Die LLM-Extraktionssicherheit ist niedrig ({confidence:.1f}%). Manuelle Prufung empfohlen."
+    low_field: "Niedrige Sicherheit bei der Extraktion von {field} ({confidence:.1f}%). Bitte auf Genauigkeit prufen."
+
+api:
+  auth:
+    too_many_login_attempts: "Zu viele Anmeldeversuche. Bitte versuchen Sie es in 60 Sekunden erneut."
+  preview:
+    session_not_found: "Sitzung nicht gefunden"
+    missing_canonical: "Keine kanonischen CV-Daten in der Sitzung gefunden. Bitte schlieBen Sie die CV-Erstellung zuerst ab."
+    preview_build_failed: "Vorschau aus den kanonischen CV-Daten konnte nicht erstellt werden."
+  validation:
+    missing_canonical: "Keine kanonischen CV-Daten in der Sitzung gefunden. Bitte laden Sie zuerst einen CV hoch oder erstellen Sie einen."
+  speech:
+    file_too_large: "Datei zu groB. Die maximal erlaubte GroBe ist {max_mb} MB."
+    transcribe_failed: "Audio-Transkription fehlgeschlagen: {error}"
+    invalid_session: "Ungultige session_id"
+    correction_failed: "Transkriptkorrektur fehlgeschlagen: {error}"

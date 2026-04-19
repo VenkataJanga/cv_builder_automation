@@ -130,6 +130,7 @@ JWT_USER_ID_CLAIM = "user_id"
 JWT_ROLE_CLAIM = "role"
 JWT_EMAIL_CLAIM = "email"
 JWT_FULL_NAME_CLAIM = "full_name"
+JWT_LOCALE_CLAIM = "locale"
 JWT_EXP_CLAIM = "exp"
 
 ERR_NOT_AUTHENTICATED = "Not authenticated"

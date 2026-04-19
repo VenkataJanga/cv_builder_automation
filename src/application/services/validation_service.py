@@ -8,6 +8,8 @@ Phase 4: Updated to work with canonical CV schema only.
 """
 
 from typing import Dict, Any
+
+from src.core.i18n import t
 from src.domain.cv.services.schema_validation_service import SchemaValidationService, ValidationResult
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 
@@ -25,7 +27,7 @@ class ValidationService:
     def __init__(self):
         self.schema_validator = SchemaValidationService()
     
-    def validate(self, canonical_cv: Dict[str, Any], operation: str = "save") -> Dict[str, Any]:
+    def validate(self, canonical_cv: Dict[str, Any], operation: str = "save", locale: str | None = None) -> Dict[str, Any]:
         """
         Validate canonical CV data for specified operation.
         
@@ -48,18 +50,18 @@ class ValidationService:
         
         # Select appropriate validation method based on operation
         if operation == "save":
-            result = self.schema_validator.validate_for_save(cv_schema)
+            result = self.schema_validator.validate_for_save(cv_schema, locale=locale)
         elif operation == "save_and_validate":
-            result = self.schema_validator.validate_for_save_and_validate(cv_schema)
+            result = self.schema_validator.validate_for_save_and_validate(cv_schema, locale=locale)
         elif operation == "export":
-            result = self.schema_validator.validate_for_export(cv_schema)
+            result = self.schema_validator.validate_for_export(cv_schema, locale=locale)
         else:
             # Default to save validation
-            result = self.schema_validator.validate_for_save(cv_schema)
+            result = self.schema_validator.validate_for_save(cv_schema, locale=locale)
         
         return self._convert_to_session_format(result)
     
-    def validate_for_save(self, canonical_cv: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_for_save(self, canonical_cv: Dict[str, Any], locale: str | None = None) -> Dict[str, Any]:
         """
         Validate CV for save operation (always allowed).
         
@@ -69,9 +71,9 @@ class ValidationService:
         Returns:
             Validation result dictionary
         """
-        return self.validate(canonical_cv, operation="save")
+        return self.validate(canonical_cv, operation="save", locale=locale)
     
-    def validate_for_save_and_validate(self, canonical_cv: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_for_save_and_validate(self, canonical_cv: Dict[str, Any], locale: str | None = None) -> Dict[str, Any]:
         """
         Validate CV with detailed feedback (save allowed, export conditional).
         
@@ -81,9 +83,9 @@ class ValidationService:
         Returns:
             Validation result dictionary with detailed warnings
         """
-        return self.validate(canonical_cv, operation="save_and_validate")
+        return self.validate(canonical_cv, operation="save_and_validate", locale=locale)
     
-    def validate_for_export(self, canonical_cv: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_for_export(self, canonical_cv: Dict[str, Any], locale: str | None = None) -> Dict[str, Any]:
         """
         Validate CV for export operation (strict, may block).
         
@@ -93,7 +95,7 @@ class ValidationService:
         Returns:
             Validation result dictionary with export readiness
         """
-        return self.validate(canonical_cv, operation="export")
+        return self.validate(canonical_cv, operation="export", locale=locale)
     
     def get_completeness_percentage(self, canonical_cv: Dict[str, Any]) -> float:
         """
@@ -189,6 +191,7 @@ class ValidationService:
         self,
         validation_result: Dict[str, Any],
         confidence_scores: Dict[str, float],
+        locale: str | None = None,
     ) -> Dict[str, Any]:
         """
         Add warnings if LLM extraction confidence is low (Phase 5).
@@ -208,7 +211,11 @@ class ValidationService:
 
         # Add warning if overall confidence is low
         if overall_confidence < 0.6:
-            warning = f"LLM extraction confidence is low ({overall_confidence*100:.1f}%). Manual review recommended."
+            warning = t(
+                "validation.extraction.low_overall",
+                locale=locale,
+                confidence=overall_confidence * 100,
+            )
             if "warnings" not in result:
                 result["warnings"] = []
             result["warnings"].append(warning)
@@ -216,7 +223,12 @@ class ValidationService:
         # Add warnings for specific low-confidence fields
         for field, confidence in confidence_scores.items():
             if field != "overall" and confidence < 0.5:
-                warning = f"Low confidence in {field} extraction ({confidence*100:.1f}%). Verify accuracy."
+                warning = t(
+                    "validation.extraction.low_field",
+                    locale=locale,
+                    field=field,
+                    confidence=confidence * 100,
+                )
                 if "warnings" not in result:
                     result["warnings"] = []
                 if warning not in result["warnings"]:

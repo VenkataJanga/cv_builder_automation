@@ -13,6 +13,9 @@ class CVBuilderApp {
         this.editableData = null;
         this.token = localStorage.getItem('cv_builder_token') || null;
         this.currentUser = null;
+        const storedLocale = (localStorage.getItem('cv_builder_locale') || '').toLowerCase();
+        this.locale = ['en', 'de'].includes(storedLocale) ? storedLocale : 'en';
+        this.uiMessages = window.CV_UI_MESSAGES || {};
 
         if (autoInit) {
             this.init();
@@ -20,10 +23,119 @@ class CVBuilderApp {
     }
 
     init() {
+        this.setLocale(this.locale, false);
         this.bindEvents();
         this.checkServerStatus();
         this.setupDragAndDrop();
         this.checkAuthStatus();
+    }
+
+    tr(key, params = null) {
+        const select = (catalog, path) => path.split('.').reduce((acc, part) => (acc && acc[part] !== undefined ? acc[part] : null), catalog);
+        const localeCatalog = this.uiMessages[this.locale] || this.uiMessages.en;
+        const template = select(localeCatalog, key) || select(this.uiMessages.en, key) || key;
+        if (!params || typeof template !== 'string') {
+            return template;
+        }
+        return template.replace(/\{(\w+)\}/g, (_, token) => (params[token] !== undefined ? String(params[token]) : `{${token}}`));
+    }
+
+    resolveEffectiveLocale(preferredLocale = null) {
+        const storedLocale = (localStorage.getItem('cv_builder_locale') || '').toLowerCase();
+        if (['en', 'de'].includes(storedLocale)) {
+            return storedLocale;
+        }
+        const normalizedPreferred = (preferredLocale || '').toLowerCase();
+        if (['en', 'de'].includes(normalizedPreferred)) {
+            return normalizedPreferred;
+        }
+        return this.locale || 'en';
+    }
+
+    setLocale(locale, persist = true) {
+        this.locale = ['en', 'de'].includes((locale || '').toLowerCase()) ? locale.toLowerCase() : 'en';
+        document.documentElement.lang = this.locale;
+        if (persist) {
+            localStorage.setItem('cv_builder_locale', this.locale);
+        }
+        const languageSelect = document.getElementById('languageSelect');
+        if (languageSelect) {
+            languageSelect.value = this.locale;
+        }
+        this.applyStaticTranslations();
+
+        // If there is no meaningful user data yet, restart conversation so the
+        // first backend question follows the selected locale as well.
+        if (this.token && !this.hasMeaningfulFlowData()) {
+            this.initializeChat();
+        }
+    }
+
+    applyStaticTranslations() {
+        document.querySelectorAll('[data-i18n]').forEach((element) => {
+            const key = element.getAttribute('data-i18n');
+            if (key) {
+                element.textContent = this.tr(key);
+            }
+        });
+
+        document.querySelectorAll('[data-i18n-placeholder]').forEach((element) => {
+            const key = element.getAttribute('data-i18n-placeholder');
+            if (key) {
+                element.setAttribute('placeholder', this.tr(key));
+            }
+        });
+
+        document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+            const key = element.getAttribute('data-i18n-aria-label');
+            if (key) {
+                element.setAttribute('aria-label', this.tr(key));
+            }
+        });
+
+        document.querySelectorAll('[data-i18n-title]').forEach((element) => {
+            const key = element.getAttribute('data-i18n-title');
+            if (key) {
+                element.setAttribute('title', this.tr(key));
+            }
+        });
+
+        // Keep initial placeholders translated even before any data arrives.
+        const chatMessages = document.getElementById('chatMessages');
+        if (chatMessages && chatMessages.querySelectorAll('.message').length === 1 && chatMessages.querySelectorAll('.user-message').length === 0) {
+            chatMessages.innerHTML = this.getInitialChatMarkup();
+        }
+
+        const preview = document.getElementById('cvPreview');
+        if (preview && !this.currentCVData && !this.isEditMode) {
+            preview.innerHTML = this.getPreviewPlaceholderMarkup();
+        }
+
+        // Keep record button label consistent with currently selected locale.
+        if (!this.isRecording) {
+            const recordBtn = document.getElementById('recordBtn');
+            if (recordBtn) {
+                recordBtn.innerHTML = `<span class="record-icon">🔴</span> ${this.tr('ui.startRecording')}`;
+            }
+        }
+
+        // Localize default review badge text even before status updates arrive.
+        const reviewStatusText = document.querySelector('#reviewStatusBadge .status-text');
+        if (reviewStatusText && reviewStatusText.textContent && reviewStatusText.textContent.trim()) {
+            const normalized = reviewStatusText.textContent.trim().toLowerCase();
+            if (normalized === 'pending review' || normalized === 'ausstehende prufung') {
+                reviewStatusText.textContent = this.tr('edit.statusPending');
+            }
+        }
+    }
+
+    getPreviewPlaceholderMarkup() {
+        return `
+            <div class="preview-placeholder">
+                <p>${this.tr('preview.empty1')}</p>
+                <p>${this.tr('preview.empty2')}</p>
+            </div>
+        `;
     }
 
     getPreferredCVData(data, fallback = {}) {
@@ -46,20 +158,95 @@ class CVBuilderApp {
         return `
             <div class="message bot-message">
                 <div class="message-content">
-                    Hello! I'm here to help you build your CV. You can:
+                    ${this.tr('chat.welcome')}
                     <ul>
-                        <li>Upload your existing CV (PDF/DOCX/DOC)</li>
-                        <li>Record yourself talking about your experience</li>
-                        <li>Chat with me to build your CV step by step</li>
+                        <li>${this.tr('chat.optionUpload')}</li>
+                        <li>${this.tr('chat.optionRecord')}</li>
+                        <li>${this.tr('chat.optionChat')}</li>
                     </ul>
-                    How would you like to start?
+                    ${this.tr('chat.howStart')}
                 </div>
             </div>
         `;
     }
 
+    hasNonEmptyValue(value) {
+        if (value === null || value === undefined) {
+            return false;
+        }
+
+        if (typeof value === 'string') {
+            return value.trim().length > 0;
+        }
+
+        if (typeof value === 'number') {
+            return Number.isFinite(value) && value !== 0;
+        }
+
+        if (typeof value === 'boolean') {
+            return value;
+        }
+
+        if (Array.isArray(value)) {
+            return value.some((item) => this.hasNonEmptyValue(item));
+        }
+
+        if (typeof value === 'object') {
+            return Object.values(value).some((item) => this.hasNonEmptyValue(item));
+        }
+
+        return false;
+    }
+
+    hasMeaningfulQuestionnaireData(cvData) {
+        if (!cvData || typeof cvData !== 'object') {
+            return false;
+        }
+
+        const personal = cvData.personal_details || {};
+        const summary = cvData.summary || {};
+        const skills = cvData.skills || {};
+
+        const personalHasData = this.hasNonEmptyValue([
+            personal.full_name,
+            personal.current_title,
+            personal.location,
+            personal.current_organization,
+            personal.email,
+            personal.phone,
+            personal.linkedin,
+            personal.total_experience,
+        ]);
+
+        const summaryHasData = this.hasNonEmptyValue([
+            summary.professional_summary,
+            summary.target_role,
+            cvData.target_role,
+        ]);
+
+        const skillsHasData = this.hasNonEmptyValue([
+            skills.primary_skills,
+            skills.secondary_skills,
+            skills.tools_and_platforms,
+            skills.domain_expertise,
+            cvData.languages,
+        ]);
+
+        const listSectionsHaveData = this.hasNonEmptyValue([
+            cvData.work_experience,
+            cvData.project_experience,
+            cvData.education,
+            cvData.certifications,
+            cvData.publications,
+            cvData.awards,
+            cvData.leadership,
+        ]);
+
+        return personalHasData || summaryHasData || skillsHasData || listSectionsHaveData;
+    }
+
     hasMeaningfulFlowData() {
-        const hasPreviewData = Boolean(this.currentCVData && Object.keys(this.currentCVData).length > 0);
+        const hasPreviewData = this.hasMeaningfulQuestionnaireData(this.currentCVData);
         const canonicalCandidate = this.currentCanonicalCV?.candidate || {};
         const canonicalExperience = this.currentCanonicalCV?.experience || {};
         const hasCanonicalData = Boolean(
@@ -71,8 +258,8 @@ class CVBuilderApp {
 
         const userMessages = document.querySelectorAll('#chatMessages .user-message');
         const hasConversationInput = userMessages.length > 0;
-
         return hasPreviewData || hasCanonicalData || hasConversationInput;
+
     }
 
     async ensureSingleActiveFlow(targetFlow) {
@@ -91,8 +278,7 @@ class CVBuilderApp {
         }
 
         const confirmed = window.confirm(
-            `You are switching from ${this.activeFlow} to ${targetFlow}. ` +
-            'This will clear the current preview and unsaved temporary session data. Do you want to continue?'
+            this.tr('flow.switchConfirm', { from: this.activeFlow, to: targetFlow })
         );
 
         if (!confirmed) {
@@ -150,12 +336,7 @@ class CVBuilderApp {
 
         const preview = document.getElementById('cvPreview');
         if (preview) {
-            preview.innerHTML = `
-                <div class="preview-placeholder">
-                    <p>Your CV data will appear here as you build it</p>
-                    <p>Upload a document, record audio, or start chatting to begin</p>
-                </div>
-            `;
+            preview.innerHTML = this.getPreviewPlaceholderMarkup();
         }
 
         const resultAreas = ['uploadResult', 'transcriptionResult'];
@@ -188,12 +369,12 @@ class CVBuilderApp {
 
         const recordBtn = document.getElementById('recordBtn');
         if (recordBtn) {
-            recordBtn.innerHTML = '<span class="record-icon">🔴</span> Start Recording';
+            recordBtn.innerHTML = `<span class="record-icon">🔴</span> ${this.tr('ui.startRecording')}`;
             recordBtn.classList.remove('recording');
         }
 
         this.resetButtonStates();
-        this.updateStatus('sessionStatus', 'No active session', '');
+        this.updateStatus('sessionStatus', this.tr('app.noActiveSession'), '');
         this.updateStatus('lastUpdate', new Date().toLocaleTimeString(), '');
     }
 
@@ -217,7 +398,7 @@ class CVBuilderApp {
         }
 
         if (notify) {
-            this.showNotification('Session cleared. Started a fresh session.', 'success');
+            this.showNotification(this.tr('app.sessionCleared'), 'success');
         }
     }
 
@@ -231,11 +412,12 @@ class CVBuilderApp {
         const headers = {
             ...(options.headers || {}),
             ...this.getAuthHeaders(),
+            'X-Locale': this.locale,
         };
         const response = await fetch(url, { ...options, headers });
         if (response.status === 401) {
             this.logout();
-            throw new Error('Session expired. Please sign in again.');
+            throw new Error(this.tr('auth.sessionExpired'));
         }
         return response;
     }
@@ -252,6 +434,7 @@ class CVBuilderApp {
             });
             if (res.ok) {
                 this.currentUser = await res.json();
+                this.setLocale(this.resolveEffectiveLocale(this.currentUser?.preferred_locale), false);
                 this.showUserInfoBar();
                 this.initializeChat();
             } else {
@@ -288,7 +471,7 @@ class CVBuilderApp {
         const loginBtn = document.getElementById('loginBtn');
         const errorDiv = document.getElementById('loginError');
         loginBtn.disabled = true;
-        loginBtn.textContent = 'Signing in…';
+        loginBtn.textContent = this.tr('ui.loginSigningIn');
         errorDiv.style.display = 'none';
 
         try {
@@ -313,6 +496,7 @@ class CVBuilderApp {
                 headers: { 'Authorization': `Bearer ${this.token}` },
             });
             this.currentUser = meRes.ok ? await meRes.json() : { username };
+            this.setLocale(this.resolveEffectiveLocale(this.currentUser?.preferred_locale), false);
 
             this.resetApplicationState();
             this.hideLoginOverlay();
@@ -323,7 +507,7 @@ class CVBuilderApp {
             errorDiv.style.display = 'block';
         } finally {
             loginBtn.disabled = false;
-            loginBtn.textContent = 'Sign In';
+            loginBtn.textContent = this.tr('ui.loginBtn');
         }
     }
 
@@ -333,7 +517,7 @@ class CVBuilderApp {
         this.currentUser = null;
         localStorage.removeItem('cv_builder_token');
         this.showLoginOverlay();
-        this.showNotification('Signed out.', 'info');
+        this.showNotification(this.tr('app.signedOut'), 'info');
     }
 
     // ── Event binding ─────────────────────────────────────────────────────────
@@ -348,6 +532,7 @@ class CVBuilderApp {
         });
         document.getElementById('logoutBtn').addEventListener('click', () => this.logout());
         document.getElementById('clearSessionBtn').addEventListener('click', () => this.clearCurrentSession());
+        document.getElementById('languageSelect').addEventListener('change', (e) => this.setLocale(e.target.value));
 
         // Session Management
         document.getElementById('createSession').addEventListener('click', () => this.createSession());
@@ -434,7 +619,7 @@ class CVBuilderApp {
 
     async createConversationSession() {
         try {
-            const response = await this.request(`${this.apiBase}/chat/conversations/session`, {
+            const response = await this.request(`${this.apiBase}/chat/conversations/session?locale=${encodeURIComponent(this.locale)}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({}),
@@ -455,7 +640,7 @@ class CVBuilderApp {
                 throw new Error('Failed to create chat session');
             }
         } catch (error) {
-            this.showNotification('Failed to start conversation: ' + error.message, 'error');
+            this.showNotification(this.tr('chat.startFailed', { error: error.message }), 'error');
         }
     }
 
@@ -463,13 +648,13 @@ class CVBuilderApp {
         try {
             const response = await fetch(`${this.apiBase}/health`, { method: 'GET' });
             if (response.ok) {
-                this.updateStatus('serverStatus', 'Online', 'text-success');
+                this.updateStatus('serverStatus', this.tr('app.statusOnline'), 'text-success');
             } else {
                 throw new Error('Server not responding properly');
             }
         } catch (error) {
-            this.updateStatus('serverStatus', 'Offline', 'text-error');
-            this.showNotification('Server is offline. Please start the server.', 'error');
+            this.updateStatus('serverStatus', this.tr('app.statusOffline'), 'text-error');
+            this.showNotification(this.tr('app.serverOffline'), 'error');
         }
     }
 
@@ -484,19 +669,19 @@ class CVBuilderApp {
                 const data = await response.json();
                 this.currentSessionId = data.session_id;
                 this.updateSessionDisplay(data.session_id);
-                this.showNotification('New session created successfully!', 'success');
+                this.showNotification(this.tr('session.created'), 'success');
             } else {
                 throw new Error('Failed to create session');
             }
         } catch (error) {
-            this.showNotification('Failed to create session: ' + error.message, 'error');
+            this.showNotification(this.tr('session.createFailed', { error: error.message }), 'error');
         }
     }
 
     async loadSession() {
         const sessionId = document.getElementById('sessionId').value.trim();
         if (!sessionId) {
-            this.showNotification('Please enter a session ID', 'error');
+            this.showNotification(this.tr('session.enterSessionId'), 'error');
             return;
         }
 
@@ -513,12 +698,12 @@ class CVBuilderApp {
                 this.currentCanonicalCV = data.canonical_cv || this.currentCanonicalCV;
                 this.updateSessionDisplay(sessionId);
                 this.refreshCVPreview();
-                this.showNotification('Session loaded successfully!', 'success');
+                this.showNotification(this.tr('session.loaded'), 'success');
             } else {
                 throw new Error('Session not found');
             }
         } catch (error) {
-            this.showNotification('Failed to load session: ' + error.message, 'error');
+            this.showNotification(this.tr('session.loadFailed', { error: error.message }), 'error');
         }
     }
 
@@ -531,19 +716,19 @@ class CVBuilderApp {
         }
 
         if (!file.name.match(/\.(pdf|docx|doc)$/i)) {
-            this.showNotification('Please select a PDF, DOCX, or DOC file', 'error');
+            this.showNotification(this.tr('upload.selectDoc'), 'error');
             return;
         }
 
         if (!this.currentSessionId) {
             await this.createSession();
             if (!this.currentSessionId) {
-                this.showNotification('Unable to create a session for document upload.', 'error');
+                this.showNotification(this.tr('upload.sessionCreateFailed'), 'error');
                 return;
             }
         }
 
-        this.showProgress('uploadProgress', 'Uploading file...');
+        this.showProgress('uploadProgress', this.tr('upload.uploading'));
         
         try {
             const formData = new FormData();
@@ -569,15 +754,15 @@ class CVBuilderApp {
                 }
 
                 this.hideProgress('uploadProgress');
-                this.showResult('uploadResult', 'File uploaded and processed successfully!', 'success');
+                this.showResult('uploadResult', this.tr('upload.success'), 'success');
                 this.refreshCVPreview();
-                this.addChatMessage(`I've processed your uploaded file "${file.name}". The CV data has been extracted. Would you like to review or add more information?`, 'bot');
+                this.addChatMessage(this.tr('chat.uploadProcessed', { file: file.name }), 'bot');
             } else {
                 throw new Error('Upload failed');
             }
         } catch (error) {
             this.hideProgress('uploadProgress');
-            this.showResult('uploadResult', 'Upload failed: ' + error.message, 'error');
+            this.showResult('uploadResult', this.tr('upload.failed', { error: error.message }), 'error');
         }
     }
 
@@ -608,12 +793,12 @@ class CVBuilderApp {
             this.isRecording = true;
             
             const recordBtn = document.getElementById('recordBtn');
-            recordBtn.innerHTML = '<span class="record-icon">⏹️</span> Stop Recording';
+            recordBtn.innerHTML = `<span class="record-icon">⏹️</span> ${this.tr('ui.stopRecording')}`;
             recordBtn.classList.add('recording');
             
-            document.getElementById('recordingStatus').textContent = 'Recording in progress...';
+            document.getElementById('recordingStatus').textContent = this.tr('ui.recordingInProgress');
         } catch (error) {
-            this.showNotification('Failed to start recording: ' + error.message, 'error');
+            this.showNotification(this.tr('audio.startRecordingFailed', { error: error.message }), 'error');
         }
     }
 
@@ -624,10 +809,10 @@ class CVBuilderApp {
             this.isRecording = false;
 
             const recordBtn = document.getElementById('recordBtn');
-            recordBtn.innerHTML = '<span class="record-icon">🔴</span> Start Recording';
+            recordBtn.innerHTML = `<span class="record-icon">🔴</span> ${this.tr('ui.startRecording')}`;
             recordBtn.classList.remove('recording');
             
-            document.getElementById('recordingStatus').textContent = 'Processing audio...';
+            document.getElementById('recordingStatus').textContent = this.tr('audio.processing');
         }
     }
 
@@ -641,7 +826,7 @@ class CVBuilderApp {
         const isAudioExt = audioExtensions.test(file.name);
 
         if (!isAudioMime && !isAudioExt) {
-            this.showNotification('Please select an audio file (mp3, wav, m4a, ogg, flac, webm)', 'error');
+            this.showNotification(this.tr('audio.invalidFile'), 'error');
             return;
         }
 
@@ -649,8 +834,10 @@ class CVBuilderApp {
         const MAX_AUDIO_MB = 25;
         if (file.size > MAX_AUDIO_MB * 1024 * 1024) {
             this.showNotification(
-                `Audio file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). ` +
-                `Maximum allowed is ${MAX_AUDIO_MB} MB (~10–12 minutes of audio).`,
+                this.tr('audio.tooLarge', {
+                    sizeMb: (file.size / 1024 / 1024).toFixed(1),
+                    maxMb: MAX_AUDIO_MB,
+                }),
                 'error'
             );
             return;
@@ -665,7 +852,7 @@ class CVBuilderApp {
             return;
         }
 
-        this.showProgress('audioProgress', 'Processing audio...');
+        this.showProgress('audioProgress', this.tr('audio.processing'));
 
         try {
             const formData = new FormData();
@@ -692,7 +879,7 @@ class CVBuilderApp {
                     // If the in-memory backend session was reset, retry once without stale session_id.
                     if (retryOnInvalidSession && /invalid session/i.test(String(data.error))) {
                         this.currentSessionId = null;
-                        this.updateStatus('sessionStatus', 'No active session', '');
+                        this.updateStatus('sessionStatus', this.tr('app.noActiveSession'), '');
                         this.updateStatus('lastUpdate', new Date().toLocaleTimeString(), '');
                         return await this.processAudio(audioBlob, false);
                     }
@@ -711,9 +898,9 @@ class CVBuilderApp {
                 this.hideProgress('audioProgress');
                 
                 // Show transcription result
-                let resultText = `Transcription completed!\n\n`;
+                let resultText = `${this.tr('audio.transcriptionDone')}\n\n`;
                 if (data.raw_transcript) {
-                    resultText += `Transcript: ${data.raw_transcript.substring(0, 200)}${data.raw_transcript.length > 200 ? '...' : ''}`;
+                    resultText += `${this.tr('audio.transcriptLabel')} ${data.raw_transcript.substring(0, 200)}${data.raw_transcript.length > 200 ? '...' : ''}`;
                 }
                 if (data.audio_quality_warning) {
                     resultText += `\n\n⚠️ ${data.audio_quality_warning}`;
@@ -725,7 +912,7 @@ class CVBuilderApp {
                 this.resetButtonStates();
                 await this.refreshCVPreview();
                 
-                this.addChatMessage(`I've processed your audio and extracted CV information. Would you like to review the details or add more information?`, 'bot');
+                this.addChatMessage(this.tr('chat.audioProcessed'), 'bot');
                 
                 document.getElementById('recordingStatus').textContent = '';
             } else {
@@ -739,7 +926,7 @@ class CVBuilderApp {
             }
         } catch (error) {
             this.hideProgress('audioProgress');
-            this.showResult('transcriptionResult', 'Audio processing failed: ' + error.message, 'error');
+            this.showResult('transcriptionResult', this.tr('audio.processingFailed', { error: error.message }), 'error');
             document.getElementById('recordingStatus').textContent = '';
         }
     }
@@ -758,7 +945,7 @@ class CVBuilderApp {
         if (!this.currentSessionId) {
             await this.createConversationSession();
             if (!this.currentSessionId) {
-                this.showNotification('Unable to start the conversation session.', 'error');
+                this.showNotification(this.tr('chat.sessionStartFailed'), 'error');
                 return;
             }
         }
@@ -779,7 +966,7 @@ class CVBuilderApp {
             if (response.ok) {
                 const data = await response.json();
                 this.activeFlow = 'conversation';
-                this.addChatMessage(data.bot || 'No response', 'bot');
+                this.addChatMessage(data.bot || this.tr('chat.noResponse'), 'bot');
                 
                 const preferredData = this.getPreferredCVData(data, null);
                 if (preferredData && Object.keys(preferredData).length > 0) {
@@ -796,7 +983,7 @@ class CVBuilderApp {
                 throw new Error('Chat request failed');
             }
         } catch (error) {
-            this.addChatMessage('Sorry, I encountered an error: ' + error.message, 'bot');
+            this.addChatMessage(this.tr('chat.genericError', { error: error.message }), 'bot');
         }
     }
 
@@ -1071,12 +1258,12 @@ class CVBuilderApp {
 
     async saveAndValidateCV() {
         if (!this.currentSessionId) {
-            this.showNotification('No active session. Please create or load a session first.', 'error');
+            this.showNotification(this.tr('validation.noSession'), 'error');
             return;
         }
 
         if (!this.currentCVData || Object.keys(this.currentCVData).length === 0) {
-            this.showNotification('No CV data to validate. Please build your CV first.', 'error');
+            this.showNotification(this.tr('validation.noData'), 'error');
             return;
         }
 
@@ -1102,7 +1289,7 @@ class CVBuilderApp {
                     warnings: ['Please complete the required fields to proceed with validation.']
                 });
                 
-                this.showNotification(`⚠ ${validationErrors.length} required field(s) missing. Please check the validation feedback.`, 'error');
+                this.showNotification(this.tr('validation.missingRequiredCount', { count: validationErrors.length }), 'error');
                 return;
             }
 
@@ -1141,11 +1328,11 @@ class CVBuilderApp {
 
             // Show appropriate notification
             if (canExport && data.review_status === 'completed') {
-                this.showNotification('✓ CV validated successfully! You can now export your CV.', 'success');
+                this.showNotification(this.tr('validation.success'), 'success');
             } else if (data.validation && !data.validation.can_export) {
-                this.showNotification('⚠ Please address validation issues before exporting.', 'error');
+                this.showNotification(this.tr('validation.blocked'), 'error');
             } else {
-                this.showNotification('CV saved. Please review any feedback.', 'info');
+                this.showNotification(this.tr('validation.saved'), 'info');
             }
 
             // Keep user in edit mode when there are validation issues so fields remain editable.
@@ -1159,7 +1346,7 @@ class CVBuilderApp {
             }
         } catch (error) {
             console.error('Validation error:', error);
-            this.showNotification('Failed to validate CV: ' + error.message, 'error');
+            this.showNotification(this.tr('validation.failed', { error: error.message }), 'error');
             
             // Reset button
             const saveBtn = document.getElementById('saveAndValidate');
@@ -1216,7 +1403,7 @@ class CVBuilderApp {
             firstTarget.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
 
-        this.showNotification('Validation issues found. Edit mode opened so you can update the flagged Project/Education rows.', 'info');
+        this.showNotification(this.tr('edit.validationIssuesOpened'), 'info');
     }
 
     updateReviewStatusBadge(status) {
@@ -1232,15 +1419,15 @@ class CVBuilderApp {
         if (status === 'completed' || status === 'approved') {
             badge.className = 'review-status-badge status-approved';
             if (icon) icon.textContent = '✓';
-            if (text) text.textContent = 'Validated';
+            if (text) text.textContent = this.tr('edit.statusValidated');
         } else if (status === 'in_progress' || status === 'pending') {
             badge.className = 'review-status-badge status-pending';
             if (icon) icon.textContent = '⏳';
-            if (text) text.textContent = 'Pending Review';
+            if (text) text.textContent = this.tr('edit.statusPending');
         } else if (status === 'rejected') {
             badge.className = 'review-status-badge status-rejected';
             if (icon) icon.textContent = '✗';
-            if (text) text.textContent = 'Issues Found';
+            if (text) text.textContent = this.tr('edit.statusIssues');
         } else {
             badge.style.display = 'none';
         }
@@ -1373,17 +1560,17 @@ class CVBuilderApp {
         // Enable export if review is completed and validation passed
         if ((reviewStatus === 'completed' || reviewStatus === 'approved') && canExport) {
             exportBtn.disabled = false;
-            exportBtn.title = 'Export your validated CV';
+            exportBtn.title = this.tr('export.tipReady');
             exportBtn.classList.remove('btn-disabled');
         } else {
             exportBtn.disabled = true;
             
             if (!canExport) {
-                exportBtn.title = '⚠ Please fix validation issues before exporting';
+                exportBtn.title = this.tr('export.tipFixIssues');
             } else if (reviewStatus === 'pending' || reviewStatus === 'in_progress') {
-                exportBtn.title = '⏳ Please complete validation before exporting';
+                exportBtn.title = this.tr('export.tipCompleteValidation');
             } else {
-                exportBtn.title = '💾 Click "Save & Validate" first';
+                exportBtn.title = this.tr('export.tipSaveValidate');
             }
             
             exportBtn.classList.add('btn-disabled');
@@ -1392,7 +1579,7 @@ class CVBuilderApp {
 
     toggleEditMode() {
         if (!this.currentSessionId || !this.currentCVData) {
-            this.showNotification('No CV data to edit. Please build your CV first.', 'error');
+            this.showNotification(this.tr('edit.noDataToEdit'), 'error');
             return;
         }
 
@@ -1420,11 +1607,11 @@ class CVBuilderApp {
         preview.innerHTML = `
             <div class="cv-edit-form">
                 <div class="edit-mode-header">
-                    <h3>📝 Edit Mode - Make Changes Below</h3>
+                    <h3>${this.tr('edit.editModeHeader')}</h3>
                     <div class="edit-actions">
-                        <button class="btn btn-secondary" onclick="window.cvApp.cancelEdit()">Cancel</button>
+                        <button class="btn btn-secondary" onclick="window.cvApp.cancelEdit()">${this.tr('edit.cancelBtn')}</button>
                         <button class="btn btn-primary" onclick="window.cvApp.saveEditedCV()">
-                            <span>💾</span> Save Changes
+                            ${this.tr('edit.saveChangesBtn')}
                         </button>
                     </div>
                 </div>
@@ -1474,7 +1661,7 @@ class CVBuilderApp {
         // Personal Details Section - ENHANCED with ALL missing fields and better data mapping
         html += `
             <div class="edit-section">
-                <h3 class="section-title">📋 Personal Details</h3>
+                <h3 class="section-title">${this.tr('edit.sectionPersonal')}</h3>
                 <div class="form-grid">
                     <div class="form-group required">
                         <label for="edit_full_name">Full Name *</label>
@@ -1543,7 +1730,7 @@ class CVBuilderApp {
         const summaryText = this.extractSummaryText(summary);
         html += `
             <div class="edit-section">
-                <h3 class="section-title">📝 Professional Summary</h3>
+                <h3 class="section-title">${this.tr('edit.sectionSummary')}</h3>
                 <div class="form-group required">
                     <label for="edit_summary">Summary *</label>
                     <textarea id="edit_summary" class="form-control" rows="5" required
@@ -1581,7 +1768,7 @@ class CVBuilderApp {
         
         html += `
             <div class="edit-section">
-                <h3 class="section-title">💡 Skills & Expertise</h3>
+                <h3 class="section-title">${this.tr('edit.sectionSkills')}</h3>
                 <div class="form-group required">
                     <label for="edit_primary_skills">Primary Skills *</label>
                     <textarea id="edit_primary_skills" class="form-control" rows="3" required
@@ -1631,7 +1818,7 @@ class CVBuilderApp {
 
         let html = `
             <div class="edit-section" id="education-edit-section">
-                <h3 class="section-title">🎓 Education</h3>
+                <h3 class="section-title">${this.tr('edit.sectionEducation')}</h3>
                 <div id="education-entries">
         `;
 
@@ -1740,7 +1927,7 @@ class CVBuilderApp {
 
         let html = `
             <div class="edit-section" id="projects-edit-section">
-                <h3 class="section-title">🚀 Project Experience</h3>
+                <h3 class="section-title">${this.tr('edit.sectionProjects')}</h3>
                 <div id="project-entries">
         `;
 
@@ -1962,7 +2149,7 @@ class CVBuilderApp {
         if (entries.length === 0) {
             return `
                 <div class="edit-section" id="others-edit-section">
-                    <h3 class="section-title">🧩 Others (Unmapped Details)</h3>
+                    <h3 class="section-title">${this.tr('edit.sectionOthers')}</h3>
                     <p class="form-help">No unmapped details found for this CV.</p>
                 </div>
             `;
@@ -1983,7 +2170,7 @@ class CVBuilderApp {
 
         let html = `
             <div class="edit-section" id="others-edit-section">
-                <h3 class="section-title">🧩 Others (Unmapped Details)</h3>
+                <h3 class="section-title">${this.tr('edit.sectionOthers')}</h3>
                 <p class="form-help">These details were captured but not auto-mapped. Optionally map them below.</p>
                 <div style="display:flex;justify-content:flex-end;gap:8px;margin:8px 0 14px;">
                     <button type="button" class="btn btn-secondary" onclick="window.cvApp.resetOthersIncludes()">
@@ -2036,7 +2223,7 @@ class CVBuilderApp {
     applySuggestedOthersMappings() {
         const rows = document.querySelectorAll('.others-mapping-row');
         if (!rows.length) {
-            this.showNotification('No Others rows available to map.', 'info');
+            this.showNotification(this.tr('edit.noOthersToMap'), 'info');
             return;
         }
 
@@ -2068,7 +2255,7 @@ class CVBuilderApp {
         });
 
         this.showNotification(
-            `Applied ${applied} suggested mapping(s). ${skipped} row(s) left unmapped and excluded.`,
+            this.tr('edit.appliedMappings', { applied, skipped }),
             applied > 0 ? 'success' : 'info'
         );
     }
@@ -2076,7 +2263,7 @@ class CVBuilderApp {
     resetOthersIncludes() {
         const rows = document.querySelectorAll('.others-mapping-row');
         if (!rows.length) {
-            this.showNotification('No Others rows available to reset.', 'info');
+            this.showNotification(this.tr('edit.noOthersToReset'), 'info');
             return;
         }
 
@@ -2089,7 +2276,7 @@ class CVBuilderApp {
             resetCount += 1;
         });
 
-        this.showNotification(`Reset includes for ${resetCount} row(s).`, 'success');
+        this.showNotification(this.tr('edit.resetIncludes', { count: resetCount }), 'success');
     }
 
     _collectOthersMappingsFromForm() {
@@ -2147,7 +2334,7 @@ class CVBuilderApp {
         toggleBtn.innerHTML = '<span>✏️</span> Edit CV';
         toggleBtn.classList.remove('btn-edit-active');
         this.refreshCVPreview();
-        this.showNotification('Edit cancelled', 'info');
+        this.showNotification(this.tr('edit.editCancelled'), 'info');
     }
 
     async saveEditedCV() {
@@ -2204,13 +2391,13 @@ class CVBuilderApp {
         try {
             // Show loading state
             if (!setLoadingState()) {
-                this.showNotification('❌ Cannot find save button', 'error');
+                this.showNotification(this.tr('edit.saveButtonMissing'), 'error');
                 return;
             }
 
             // Auto-create session if missing
             if (!this.currentSessionId) {
-                this.showNotification('Creating session...', 'info');
+                this.showNotification(this.tr('edit.creatingSession'), 'info');
                 try {
                     await this.createSession();
                     if (!this.currentSessionId) {
@@ -2219,7 +2406,7 @@ class CVBuilderApp {
                     }
                 } catch (error) {
                     restoreButton();
-                    this.showNotification('❌ Failed to create session: ' + error.message, 'error');
+                    this.showNotification(this.tr('edit.createSessionFailed', { error: error.message }), 'error');
                     return;
                 }
             }
@@ -2326,7 +2513,7 @@ class CVBuilderApp {
                 this.highlightInvalidFields(validationResult.fieldErrors);
                 
                 // Show detailed error message
-                const errorMessage = `⚠️ Please fix the following issues:\n\n${validationResult.errors.join('\n')}\n\n${validationResult.suggestions.join('\n')}`;
+                const errorMessage = `${this.tr('edit.fixIssuesPrefix')}\n\n${validationResult.errors.join('\n')}\n\n${validationResult.suggestions.join('\n')}`;
                 this.showNotification(errorMessage, 'error');
                 
                 // Scroll to first invalid field
@@ -2353,10 +2540,10 @@ class CVBuilderApp {
                 
                 // Enhanced error handling for backend errors
                 const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-                const backendError = errorData.detail || errorData.message || 'Failed to save changes';
+                const backendError = errorData.detail || errorData.message || this.tr('edit.unknownError');
                 
                 // Show user-friendly error message
-                this.showNotification(`❌ Server Error: ${backendError}\n\nPlease check all required fields and try again.`, 'error');
+                this.showNotification(this.tr('edit.backendError', { error: backendError }), 'error');
                 console.error('Backend validation error:', errorData);
                 return;
             }
@@ -2380,14 +2567,14 @@ class CVBuilderApp {
 
             if (hasValidationIssues) {
                 // Keep edit mode active so user can continue fixing fields.
-                this.showNotification('⚠ Changes saved, but some required fields are still missing. Please update highlighted fields.', 'error');
+                this.showNotification(this.tr('edit.savedWithIssues'), 'error');
                 this.ensureEditableSectionsForValidationIssues(data.validation || {});
                 restoreButton();
                 return;
             }
 
             // Show success notification immediately
-            this.showNotification('✓ Changes saved successfully!', 'success');
+            this.showNotification(this.tr('edit.savedSuccess'), 'success');
             
             // Exit edit mode only when validation is clean
             this.isEditMode = false;
@@ -2407,7 +2594,7 @@ class CVBuilderApp {
             console.error('Save error:', error);
             // ALWAYS restore button on any error
             restoreButton();
-            this.showNotification('❌ Failed to save changes: ' + error.message, 'error');
+            this.showNotification(this.tr('edit.saveFailed', { error: error.message }), 'error');
         } finally {
             // Ensure saving flag is always reset
             this._isSaving = false;
@@ -2676,10 +2863,10 @@ class CVBuilderApp {
                     // Fallback: show raw data if HTML generation failed
                     preview.innerHTML = `
                         <div class="preview-placeholder">
-                            <p>⚠️ CV data exists but couldn't be formatted properly.</p>
-                            <p>Try clicking "Save & Validate" to refresh the data.</p>
+                            <p>${this.tr('preview.formatIssue')}</p>
+                            <p>${this.tr('preview.refreshHint')}</p>
                             <details style="margin-top: 10px;">
-                                <summary style="cursor: pointer; color: #5a67d8;">Show Raw Data</summary>
+                                <summary style="cursor: pointer; color: #5a67d8;">${this.tr('preview.showRawData')}</summary>
                                 <pre style="background: #f3f4f6; padding: 10px; border-radius: 4px; overflow: auto; max-height: 300px;">${JSON.stringify(cvDataToDisplay, null, 2)}</pre>
                             </details>
                         </div>
@@ -2688,8 +2875,8 @@ class CVBuilderApp {
             } else {
                 preview.innerHTML = `
                     <div class="preview-placeholder">
-                        <p>No preview data available yet</p>
-                        <p>Upload a document, record audio, or start chatting to build your CV</p>
+                        <p>${this.tr('preview.noDataYet')}</p>
+                        <p>${this.tr('preview.noDataHint')}</p>
                     </div>
                 `;
             }
@@ -2701,14 +2888,14 @@ class CVBuilderApp {
                 console.warn('Preview API failed, using local currentCVData as fallback');
                 const html = this.generateCVHTML(this.currentCVData);
                 preview.innerHTML = `<div class="cv-data">${html}</div>`;
-                this.showNotification('⚠️ Using cached CV data. Some information may be outdated.', 'info');
+                this.showNotification(this.tr('preview.usingCached'), 'info');
             } else {
                 preview.innerHTML = `
                     <div class="preview-placeholder">
-                        <p>❌ Error loading preview: ${error.message}</p>
-                        <p>Please check your connection and try again.</p>
+                        <p>${this.tr('preview.loadError', { error: error.message })}</p>
+                        <p>${this.tr('preview.retryHint')}</p>
                         <button class="btn btn-primary" onclick="window.cvApp.refreshCVPreview()" style="margin-top: 10px;">
-                            🔄 Retry
+                            ${this.tr('preview.retryButton')}
                         </button>
                     </div>
                 `;
@@ -2831,14 +3018,23 @@ class CVBuilderApp {
         if (profile) {
             const safeLocation = sanitizeLocation(profile.location);
             const safeCurrentTitle = sanitizeCurrentTitle(profile.current_title);
+            // Use target_role as the primary displayed role; fall back to current_title
+            const targetRole = profile.target_role
+                || cvData.target_role
+                || cvData.summary?.target_role
+                || null;
+            const displayedRole = targetRole || safeCurrentTitle;
             const portalId = profile.portal_id || profile.employee_id || cvData.portal_id || cvData.employee_id || '';
             html += '<div class="cv-header">';
             if (profile.full_name) html += `<h1>${profile.full_name}</h1>`;
-            if (safeCurrentTitle) html += `<h2>${safeCurrentTitle}</h2>`;
+            if (displayedRole) html += `<h2>${displayedRole}</h2>`;
             if (profile.current_organization) html += `<p><strong>Organization:</strong> ${profile.current_organization}</p>`;
             if (profile.total_experience) html += `<p><strong>Experience:</strong> ${profile.total_experience} years</p>`;
             if (profile.grade) html += `<p><strong>Current Grade:</strong> ${profile.grade}</p>`;
-            if (profile.target_role) html += `<p><strong>Target Role:</strong> ${profile.target_role}</p>`;
+            // Show current role only when it differs from the displayed target role
+            if (safeCurrentTitle && targetRole && safeCurrentTitle.toLowerCase() !== targetRole.toLowerCase()) {
+                html += `<p><strong>Current Role:</strong> ${safeCurrentTitle}</p>`;
+            }
             if (portalId) html += `<p><strong>Portal ID:</strong> ${portalId}</p>`;
             if (profile.email) html += `<p><strong>Email:</strong> ${profile.email}</p>`;
             if (safeLocation) html += `<p><strong>Location:</strong> ${safeLocation}</p>`;
@@ -3081,14 +3277,14 @@ class CVBuilderApp {
 
     showExportModal() {
         if (!this.currentCVData || Object.keys(this.currentCVData).length === 0) {
-            this.showNotification('No CV data to export. Please build your CV first.', 'error');
+            this.showNotification(this.tr('export.noDataLong'), 'error');
             return;
         }
         
         // Check if export button is disabled (validation not passed)
         const exportBtn = document.getElementById('exportCV');
         if (exportBtn && exportBtn.disabled) {
-            this.showNotification('Please validate your CV before exporting. Click "Save & Validate" first.', 'error');
+            this.showNotification(this.tr('export.validateBeforeLong'), 'error');
             return;
         }
         
@@ -3115,14 +3311,14 @@ class CVBuilderApp {
 
     async exportCV(format) {
         if (!this.currentCVData) {
-            this.showNotification('No CV data to export', 'error');
+            this.showNotification(this.tr('export.noDataShort'), 'error');
             return;
         }
 
         // Double-check validation status before export
         const exportBtn = document.getElementById('exportCV');
         if (exportBtn.disabled) {
-            this.showNotification('Please validate your CV before exporting.', 'error');
+            this.showNotification(this.tr('export.validateBeforeShort'), 'error');
             this.hideExportModal();
             return;
         }
@@ -3131,7 +3327,7 @@ class CVBuilderApp {
             if (format === 'json') {
                 this.downloadJSON(this.currentCVData, 'cv-data.json');
                 this.hideExportModal();
-                this.showNotification('CV exported as JSON successfully!', 'success');
+                this.showNotification(this.tr('export.jsonSuccess'), 'success');
                 return;
             }
 
@@ -3157,12 +3353,12 @@ class CVBuilderApp {
                 window.URL.revokeObjectURL(url);
                 
                 this.hideExportModal();
-                this.showNotification(`CV exported as ${format.toUpperCase()} successfully!`, 'success');
+                this.showNotification(this.tr('export.formatSuccess', { format: format.toUpperCase() }), 'success');
             } else {
                 throw new Error(`Export failed: ${response.statusText}`);
             }
         } catch (error) {
-            this.showNotification('Export failed: ' + error.message, 'error');
+            this.showNotification(this.tr('export.failed', { error: error.message }), 'error');
         }
     }
 
@@ -3195,7 +3391,7 @@ class CVBuilderApp {
         const exportBtn = document.getElementById('exportCV');
         if (exportBtn) {
             exportBtn.disabled = true;
-            exportBtn.title = '💾 Click "Save & Validate" first';
+            exportBtn.title = this.tr('export.tipSaveValidate');
             exportBtn.classList.add('btn-disabled');
         }
         
@@ -3338,3 +3534,4 @@ window.CVBuilderApp = CVBuilderApp;
 document.addEventListener('DOMContentLoaded', () => {
     window.cvApp = new CVBuilderApp();
 });
+
