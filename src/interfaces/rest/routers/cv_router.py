@@ -20,6 +20,7 @@ from src.application.services.conversation_service import ConversationService
 from src.application.services.document_cv_service import DocumentCVService
 from src.application.services.preview_service import PreviewService
 from src.application.services.schema_validation_service import SchemaValidationService
+from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.domain.cv.models.canonical_cv_schema import CanonicalCVSchema
 from src.domain.cv.services.merge_cv import MergeCVService
 from src.core.constants import MAX_FILE_SIZE_MB
@@ -35,6 +36,28 @@ merge_service = MergeCVService()
 schema_validation_service = SchemaValidationService()
 document_cv_service = DocumentCVService(conversation_service=conversation_service)
 preview_service = PreviewService()
+transaction_logging_service = get_transaction_logging_service()
+
+
+def _log_cv_event(
+    operation: str,
+    status: str,
+    session_id: str | None = None,
+    source_channel: str | None = None,
+    http_status: int | None = None,
+    error_message: str | None = None,
+    payload: dict | None = None,
+) -> None:
+    transaction_logging_service.log_transaction(
+        module_name="cv",
+        operation=operation,
+        status=status,
+        session_id=session_id,
+        source_channel=source_channel,
+        http_status=http_status,
+        error_message=error_message,
+        payload=payload,
+    )
 
 
 def _ensure_file_size_limit(file_bytes: bytes) -> None:
@@ -681,6 +704,14 @@ def update_cv(session_id: str, request: EditCVRequest):
     # Get the existing session
     session = conversation_service.get_session(session_id)
     if "error" in session:
+        _log_cv_event(
+            operation="update_cv",
+            status="failed",
+            session_id=session_id,
+            source_channel="edit",
+            http_status=404,
+            error_message="Session not found",
+        )
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
     raw_canonical_cv = request.canonical_cv
@@ -689,6 +720,14 @@ def update_cv(session_id: str, request: EditCVRequest):
     try:
         canonical_cv = CanonicalCVSchema(**raw_canonical_cv)
     except ValidationError as e:
+        _log_cv_event(
+            operation="update_cv",
+            status="failed",
+            session_id=session_id,
+            source_channel="edit",
+            http_status=400,
+            error_message="Invalid canonical CV structure",
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Invalid canonical CV structure: {e.errors()}"
@@ -713,6 +752,15 @@ def update_cv(session_id: str, request: EditCVRequest):
     session["has_user_edits"] = True
     session["validation_results"] = validation_results_dict
     conversation_service.save_session(session_id, session)
+
+    _log_cv_event(
+        operation="update_cv",
+        status="success",
+        session_id=session_id,
+        source_channel="edit",
+        http_status=200,
+        payload={"can_export": can_export},
+    )
     
     return EditCVResponse(
         session_id=session_id,
@@ -742,6 +790,14 @@ def review_cv(session_id: str, request: ReviewCVRequest):
     """
     session = conversation_service.get_session(session_id)
     if "error" in session:
+        _log_cv_event(
+            operation="review_cv",
+            status="failed",
+            session_id=session_id,
+            source_channel="save_validate",
+            http_status=404,
+            error_message="Session not found",
+        )
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
 
     cv_data = copy.deepcopy(request.cv_data)
@@ -783,6 +839,18 @@ def review_cv(session_id: str, request: ReviewCVRequest):
     conversation_service.resolve_and_freeze_canonical(session)
     conversation_service.save_session(session_id, session)
 
+    _log_cv_event(
+        operation="review_cv",
+        status="success",
+        session_id=session_id,
+        source_channel="save_validate",
+        http_status=200,
+        payload={
+            "can_export": can_export,
+            "mapping_applied": mapping_result.get("applied", 0),
+        },
+    )
+
     logger.info(
         f"HITL review saved: can_export={can_export}, review_status={review_status}, "
         f"errors={len(validation_dict.get('errors', []))}, "
@@ -818,10 +886,26 @@ def validate_cv(session_id: str):
     # Get the existing session
     session = conversation_service.get_session(session_id)
     if "error" in session:
+        _log_cv_event(
+            operation="validate_cv",
+            status="failed",
+            session_id=session_id,
+            source_channel="save_validate",
+            http_status=404,
+            error_message="Session not found",
+        )
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
     canonical_cv = session.get("canonical_cv")
     if not canonical_cv:
+        _log_cv_event(
+            operation="validate_cv",
+            status="failed",
+            session_id=session_id,
+            source_channel="save_validate",
+            http_status=400,
+            error_message="No canonical CV data found in session",
+        )
         raise HTTPException(
             status_code=400,
             detail="No canonical CV data found in session. Please complete CV creation first."
@@ -838,6 +922,15 @@ def validate_cv(session_id: str):
     # Phase 5: Export gating based on validation results
     can_save = True  # Always allow saving partial data
     can_export = validation_result.can_export
+
+    _log_cv_event(
+        operation="validate_cv",
+        status="success",
+        session_id=session_id,
+        source_channel="save_validate",
+        http_status=200,
+        payload={"can_export": can_export},
+    )
     
     return ValidateCVResponse(
         session_id=session_id,
@@ -879,6 +972,14 @@ async def upload_cv_document(
     """
     try:
         if not file:
+            _log_cv_event(
+                operation="upload_cv_document",
+                status="failed",
+                session_id=session_id,
+                source_channel="document_upload",
+                http_status=400,
+                error_message="No file provided",
+            )
             raise HTTPException(status_code=400, detail="No file provided")
         
         # Read file content
@@ -893,6 +994,17 @@ async def upload_cv_document(
         )
 
         preview_data = preview_service.build_preview_from_canonical(result["canonical_cv"])
+        _log_cv_event(
+            operation="upload_cv_document",
+            status="success",
+            session_id=session_id,
+            source_channel="document_upload",
+            http_status=200,
+            payload={
+                "filename": file.filename,
+                "can_export": result.get("can_export"),
+            },
+        )
         return {
             "session_id": session_id,
             "canonical_cv": result["canonical_cv"],
@@ -903,7 +1015,25 @@ async def upload_cv_document(
             "message": "Document uploaded and processed successfully"
         }
         
+    except HTTPException as exc:
+        _log_cv_event(
+            operation="upload_cv_document",
+            status="failed",
+            session_id=session_id,
+            source_channel="document_upload",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
     except Exception as e:
+        _log_cv_event(
+            operation="upload_cv_document",
+            status="failed",
+            session_id=session_id,
+            source_channel="document_upload",
+            http_status=500,
+            error_message=str(e),
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Document upload failed: {str(e)}"
@@ -940,7 +1070,26 @@ def get_cv_status(session_id: str):
 @router.get("/edit/{session_id}")
 def get_cv_for_edit_explicit(session_id: str):
     """Alias for get_cv - explicit /edit/ path for test compatibility"""
-    return get_cv(session_id)
+    try:
+        response = get_cv(session_id)
+        _log_cv_event(
+            operation="get_cv_for_edit",
+            status="success",
+            session_id=session_id,
+            source_channel="edit",
+            http_status=200,
+        )
+        return response
+    except HTTPException as exc:
+        _log_cv_event(
+            operation="get_cv_for_edit",
+            status="failed",
+            session_id=session_id,
+            source_channel="edit",
+            http_status=exc.status_code,
+            error_message=str(exc.detail),
+        )
+        raise
 
 
 @router.post("/save")
@@ -950,13 +1099,36 @@ def save_cv_changes(request: dict):
     canonical_cv = request.get("canonical_cv")
     
     if not session_id:
+        _log_cv_event(
+            operation="save_cv_changes",
+            status="failed",
+            source_channel="edit",
+            http_status=400,
+            error_message="session_id is required",
+        )
         raise HTTPException(status_code=400, detail="session_id is required")
     if not canonical_cv:
+        _log_cv_event(
+            operation="save_cv_changes",
+            status="failed",
+            session_id=session_id,
+            source_channel="edit",
+            http_status=400,
+            error_message="canonical_cv is required",
+        )
         raise HTTPException(status_code=400, detail="canonical_cv is required")
     
     # Get the existing session
     session = conversation_service.get_session(session_id)
     if "error" in session:
+        _log_cv_event(
+            operation="save_cv_changes",
+            status="failed",
+            session_id=session_id,
+            source_channel="edit",
+            http_status=404,
+            error_message="Session not found",
+        )
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
     # Update canonical_cv directly (preserve structure exactly as provided)
@@ -968,6 +1140,14 @@ def save_cv_changes(request: dict):
     session["resolved_at"] = datetime.utcnow().isoformat()
     session["has_user_edits"] = True
     conversation_service.save_session(session_id, session)
+
+    _log_cv_event(
+        operation="save_cv_changes",
+        status="success",
+        session_id=session_id,
+        source_channel="edit",
+        http_status=200,
+    )
     
     return {
         "status": "success",
@@ -984,8 +1164,23 @@ def validate_cv_direct(request: dict):
     canonical_cv = request.get("canonical_cv")
     
     if not session_id:
+        _log_cv_event(
+            operation="validate_cv_direct",
+            status="failed",
+            source_channel="save_validate",
+            http_status=400,
+            error_message="session_id is required",
+        )
         raise HTTPException(status_code=400, detail="session_id is required")
     if not canonical_cv:
+        _log_cv_event(
+            operation="validate_cv_direct",
+            status="failed",
+            session_id=session_id,
+            source_channel="save_validate",
+            http_status=400,
+            error_message="canonical_cv is required",
+        )
         raise HTTPException(status_code=400, detail="canonical_cv is required")
     
     # Update session with provided canonical_cv if different
@@ -996,6 +1191,15 @@ def validate_cv_direct(request: dict):
     
     # Use the validate_cv endpoint logic
     result = validate_cv(session_id)
+
+    _log_cv_event(
+        operation="validate_cv_direct",
+        status="success",
+        session_id=session_id,
+        source_channel="save_validate",
+        http_status=200,
+        payload={"can_export": result.can_export},
+    )
     
     return {
         "status": "success",

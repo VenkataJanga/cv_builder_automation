@@ -3255,6 +3255,43 @@ class CVBuilderApp {
             html += `</ul>`;
         }
 
+        const leadershipData = cvData.leadership || cvData.unmappedData?.leadership || {};
+        if (leadershipData && typeof leadershipData === 'object') {
+            const labelOverrides = {
+                team_scope: 'Team Scope',
+                technical_ownership: 'Technical Ownership',
+                architecture_decisions: 'Architecture Decisions',
+                delivery_planning: 'Delivery Planning',
+                mentoring_engineers: 'Mentoring Engineers',
+            };
+
+            const toLabel = (key) => {
+                if (labelOverrides[key]) return labelOverrides[key];
+                return String(key || '')
+                    .split('_')
+                    .filter(Boolean)
+                    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+                    .join(' ');
+            };
+
+            const leadershipEntries = Object.entries(leadershipData)
+                .map(([key, value]) => ({
+                    label: toLabel(key),
+                    values: normalizeList(value || [], ['description', 'value', 'text', 'content'])
+                }))
+                .filter(entry => entry.values.length > 0);
+
+            if (leadershipEntries.length > 0) {
+                html += `<h3>Leadership Experience</h3>`;
+                leadershipEntries.forEach(entry => {
+                    html += `<div class="experience-item">`;
+                    html += `<h4>${entry.label}</h4><ul>`;
+                    entry.values.forEach(item => html += `<li>${item}</li>`);
+                    html += `</ul></div>`;
+                });
+            }
+        }
+
         const renderListSection = (title, values) => {
             const normalized = normalizeList(values || []);
             if (normalized.length > 0) {

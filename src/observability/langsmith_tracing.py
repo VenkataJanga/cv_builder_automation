@@ -84,11 +84,15 @@ class LangSmithTracer:
     
     def __init__(
         self,
-        project_name: str = "cv-builder-automation",
+        project_name: Optional[str] = None,
         api_key: Optional[str] = None,
         enabled: bool = True
     ):
-        self.project_name = project_name
+        if project_name:
+            self.project_name = project_name
+        else:
+            from src.observability.constants import get_langsmith_project_name
+            self.project_name = get_langsmith_project_name()
         self.api_key = api_key
         self.enabled = enabled
         self.active_sessions: Dict[str, TraceSession] = {}

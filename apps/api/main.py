@@ -24,6 +24,7 @@ from src.interfaces.rest.routers.review_router import router as review_router
 from src.interfaces.rest.routers.session_router import router as session_router
 from src.interfaces.rest.routers.speech_router import router as speech_router
 from src.interfaces.rest.routers.template_router import router as template_router
+from src.interfaces.rest.routers.trace_router import router as trace_router
 from src.interfaces.rest.routers.validation_router import router as validation_router
 from apps.api.middleware.auth import AuthMiddleware
 
@@ -109,7 +110,7 @@ app.include_router(speech_router)
 app.include_router(questionnaire_router)
 app.include_router(quality_router)
 app.include_router(template_router)
-app.include_router(review_router)
+app.include_router(trace_router)
 
 @app.get(ROOT_PATH)
 def home():
@@ -152,6 +153,18 @@ def serve_logo():
         logger.error(f"Logo not found at {logo_path.resolve()}")
         return {"error": "Logo not found"}, 404
     return FileResponse(str(logo_path), media_type="image/png")
+
+
+@app.get("/favicon.ico")
+def serve_favicon():
+    favicon_path = WEB_UI_STATIC_DIR / "img" / "nttdata_logo.png"
+    logger.info(f"Serving favicon from: {favicon_path.resolve()}")
+    logger.info(f"File exists: {favicon_path.exists()}")
+    if not favicon_path.exists():
+        logger.error(f"Favicon not found at {favicon_path.resolve()}")
+        return {"error": "Favicon not found"}, 404
+    # Browsers often request /favicon.ico directly regardless of HTML links.
+    return FileResponse(str(favicon_path), media_type="image/png")
 
 # Mount static files after defining routes to avoid conflicts
 if WEB_UI_STATIC_DIR.exists():

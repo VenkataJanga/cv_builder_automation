@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     OPENAI_TEMPERATURE: float = Field(default=0.1)
     OPENAI_MAX_TOKENS: int = Field(default=4000)
     OPENAI_VERIFY_SSL: bool = Field(default=True)
+    LANGSMITH_ENABLED: bool = Field(default=False)
+    LANGSMITH_API_KEY: Optional[str] = Field(default=None)
+    LANGCHAIN_PROJECT: str = Field(default="cv_builder_automation")
+    LANGSMITH_ENDPOINT: str = Field(default="https://api.smith.langchain.com")
+    LANGSMITH_VERIFY_SSL: bool = Field(default=True)
 
     # LLM Enhancement Settings
     LLM_ENHANCEMENT_MODEL: str = Field(default="gpt-4o-mini")
