@@ -1,25 +1,15 @@
-import httpx
-from openai import OpenAI
-from src.core.config.settings import settings
+import logging
+from src.ai.services.llm_service import get_llm_service
 from src.core.logging.logger import get_print_logger
 
-
+logger = logging.getLogger(__name__)
 print = get_print_logger(__name__)
 
 
 class EnhancementAgent:
     def __init__(self) -> None:
-        """Initialize with OpenAI client for LLM-based enhancement"""
-        verify_ssl = settings.OPENAI_VERIFY_SSL
-
-        if verify_ssl:
-            self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-        else:
-            # DEVELOPMENT-ONLY: disable SSL verification
-            import warnings
-            warnings.filterwarnings('ignore', message='Unverified HTTPS request')
-            httpx_client = httpx.Client(verify=False)
-            self.client = OpenAI(api_key=settings.OPENAI_API_KEY, http_client=httpx_client)
+        """Initialize with LLM service for text enhancement"""
+        self.llm_service = get_llm_service()
 
     def professionalize_transcript_text(self, text: str) -> str:
         """
@@ -59,17 +49,20 @@ Transcript:
 Professional text (respond with ONLY the enhanced text, no explanations):"""
 
         try:
-            response = self.client.chat.completions.create(
-                model=settings.LLM_ENHANCEMENT_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=settings.LLM_ENHANCEMENT_TEMPERATURE,
-                max_tokens=settings.LLM_ENHANCEMENT_MAX_TOKENS
+            response, usage_data = self.llm_service.call_with_usage(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=2000
             )
-            enhanced = response.choices[0].message.content.strip()
-            return enhanced if enhanced else self._basic_cleanup(text)
+            if response:
+                logger.debug(f"Enhancement tokens: {usage_data.get('total_tokens', 0)}")
+                return response
+            else:
+                logger.warning("LLM enhancement returned empty response. Using fallback.")
+                return self._basic_cleanup(text)
         except Exception as e:
             # Fallback to basic cleanup if LLM fails
-            print(f"LLM enhancement failed: {e}. Using fallback.")
+            logger.error(f"LLM enhancement failed: {e}. Using fallback.")
             return self._basic_cleanup(text)
 
     def structure_cv_transcript(self, text: str) -> str:
@@ -146,17 +139,20 @@ Voice Transcript:
 Structured CV:"""
 
         try:
-            response = self.client.chat.completions.create(
-                model=settings.LLM_ENHANCEMENT_MODEL,
-                messages=[{"role": "user", "content": prompt}],
+            response, usage_data = self.llm_service.call_with_usage(
+                prompt=prompt,
                 temperature=0.1,
-                max_tokens=3000,
+                max_tokens=4000
             )
-            structured = response.choices[0].message.content.strip()
-            return structured if structured else self._basic_cleanup(text)
+            if response:
+                logger.debug(f"Structure tokens: {usage_data.get('total_tokens', 0)}")
+                return response
+            else:
+                logger.warning("Structure CV returned empty response. Using fallback.")
+                return self._basic_transcript_structure(text)
         except Exception as e:
-            print(f"CV structuring failed: {e}. Using basic cleanup fallback.")
-            return self._basic_cleanup(text)
+            logger.error(f"Structure CV failed: {e}. Using fallback.")
+            return self._basic_transcript_structure(text)
 
     def enhance_summary_text(self, text: str, role: str = None) -> str:
         """
@@ -183,15 +179,19 @@ Text:
 Professional summary:"""
 
         try:
-            response = self.client.chat.completions.create(
-                model=settings.LLM_ENHANCEMENT_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=settings.LLM_ENHANCEMENT_TEMPERATURE,
-                max_tokens=settings.LLM_SUMMARY_MAX_TOKENS
+            response, usage_data = self.llm_service.call_with_usage(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=500
             )
-            return response.choices[0].message.content.strip()
+            if response:
+                logger.debug(f"Summary enhancement tokens: {usage_data.get('total_tokens', 0)}")
+                return response
+            else:
+                logger.warning("Summary enhancement returned empty. Using original.")
+                return text
         except Exception as e:
-            print(f"Summary enhancement failed: {e}. Using original.")
+            logger.error(f"Summary enhancement failed: {e}. Using original.")
             return text
 
     def enhance_achievement_text(self, text: str) -> str:
@@ -218,16 +218,21 @@ Description:
 Enhanced achievement:"""
 
         try:
-            response = self.client.chat.completions.create(
-                model=settings.LLM_ENHANCEMENT_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=settings.LLM_ENHANCEMENT_TEMPERATURE,
-                max_tokens=settings.LLM_ACHIEVEMENT_MAX_TOKENS
+            response, usage_data = self.llm_service.call_with_usage(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=500
             )
-            return response.choices[0].message.content.strip()
+            if response:
+                logger.debug(f"Achievement tokens: {usage_data.get('total_tokens', 0)}")
+                return response
+            else:
+                logger.warning("Achievement enhancement returned empty. Using original.")
+                return text
         except Exception as e:
-            print(f"Achievement enhancement failed: {e}. Using original.")
+            logger.error(f"Achievement enhancement failed: {e}. Using original.")
             return text
+
 
     def _basic_cleanup(self, text: str) -> str:
         """
@@ -259,3 +264,24 @@ Enhanced achievement:"""
         if enhanced and not enhanced.endswith("."):
             enhanced += "."
         return enhanced
+
+    def _basic_transcript_structure(self, text: str) -> str:
+        """
+        Fallback basic transcript structure when LLM is unavailable.
+        Returns the text in a minimal structured format.
+        """
+        # If LLM is not available, at least return the text with basic structure
+        lines = text.split("\n")
+        
+        # Group text into sections
+        structured = []
+        structured.append("**[CV Information from Transcript]**")
+        structured.append("")
+        
+        # Add the raw text as a section
+        for line in lines:
+            line = line.strip()
+            if line:
+                structured.append(f"- {line}")
+        
+        return "\n".join(structured)

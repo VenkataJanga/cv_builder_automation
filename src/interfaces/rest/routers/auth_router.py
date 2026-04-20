@@ -27,17 +27,51 @@ from src.core.security.current_user import CurrentUser
 from src.core.i18n import t
 from src.core.security.password_hashing import verify_password
 from src.core.security.token_validator import create_access_token
+from src.application.services.transaction_logging_service import get_transaction_logging_service
 from src.infrastructure.persistence.mysql.database import get_db
 from src.infrastructure.persistence.mysql.repositories.auth_repository import AuthRepository
 from src.interfaces.rest.dependencies.auth_dependencies import get_current_user
 from src.interfaces.rest.dependencies.locale_dependencies import get_request_locale
 
 router = APIRouter(prefix=AUTH_PREFIX, tags=[AUTH_TAG])
+transaction_logging_service = get_transaction_logging_service()
 
 _AUTH_ATTEMPTS: dict[str, deque[float]] = defaultdict(deque)
 _AUTH_LIMIT_LOCK = Lock()
 _AUTH_WINDOW_SECONDS = 60
 _AUTH_MAX_ATTEMPTS = 10
+
+
+def _log_auth_event(
+    *,
+    operation: str,
+    status: str,
+    request: Request,
+    username: str | None = None,
+    actor_user_id: int | None = None,
+    actor_username: str | None = None,
+    http_status: int | None = None,
+    error_message: str | None = None,
+) -> None:
+    client_ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+
+    transaction_logging_service.log_transaction(
+        module_name="auth",
+        operation=operation,
+        status=status,
+        source_channel="auth",
+        http_status=http_status,
+        error_message=error_message,
+        actor_user_id=actor_user_id,
+        actor_username=actor_username,
+        payload={
+            "username": username,
+            "client_ip": client_ip,
+            "user_agent": user_agent,
+            "auth_method": "password",
+        },
+    )
 
 
 def _rate_limit_key(request: Request, username: str) -> str:
@@ -81,6 +115,14 @@ def login(
     """
     limit_key = _rate_limit_key(request, form.username)
     if _is_rate_limited(limit_key):
+        _log_auth_event(
+            operation="login",
+            status="failed",
+            request=request,
+            username=form.username,
+            http_status=status.HTTP_429_TOO_MANY_REQUESTS,
+            error_message="Too many login attempts",
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=t("api.auth.too_many_login_attempts", locale=locale),
@@ -91,6 +133,14 @@ def login(
 
     if user is None or not verify_password(form.password, user.hashed_password):
         _register_failed_attempt(limit_key)
+        _log_auth_event(
+            operation="login",
+            status="failed",
+            request=request,
+            username=form.username,
+            http_status=status.HTTP_401_UNAUTHORIZED,
+            error_message=ERR_INCORRECT_USERNAME_OR_PASSWORD,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=ERR_INCORRECT_USERNAME_OR_PASSWORD,
@@ -98,6 +148,16 @@ def login(
         )
 
     if not user.is_active:
+        _log_auth_event(
+            operation="login",
+            status="failed",
+            request=request,
+            username=form.username,
+            actor_user_id=user.id,
+            actor_username=user.username,
+            http_status=status.HTTP_403_FORBIDDEN,
+            error_message=ERR_ACCOUNT_DISABLED,
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=ERR_ACCOUNT_DISABLED,
@@ -114,6 +174,15 @@ def login(
         }
     )
     _reset_attempts(limit_key)
+    _log_auth_event(
+        operation="login",
+        status="success",
+        request=request,
+        username=user.username,
+        actor_user_id=user.id,
+        actor_username=user.username,
+        http_status=status.HTTP_200_OK,
+    )
     return TokenResponse(access_token=token)
 
 

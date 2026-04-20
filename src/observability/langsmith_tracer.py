@@ -224,6 +224,7 @@ class LangSmithTracer:
                     api_key=self.api_key,
                     api_url=self.endpoint,
                     session=session,
+                    auto_batch_tracing=False,
                 )
                 logger.info("LangSmith client initialized")
             except Exception as e:
@@ -258,7 +259,13 @@ class LangSmithTracer:
         Returns:
             Created trace
         """
-        trace_id = session_id or str(uuid.uuid4())
+        # LangSmith run/trace IDs must be valid UUIDs for indexing and querying.
+        # Keep caller-provided session_id as metadata, not as the trace primary key.
+        trace_id = str(uuid.uuid4())
+
+        merged_metadata = metadata.copy() if metadata else {}
+        if session_id:
+            merged_metadata.setdefault("session_id", session_id)
         
         trace = Trace(
             trace_id=trace_id,
@@ -267,7 +274,7 @@ class LangSmithTracer:
             user_id=user_id,
             session_id=session_id,
             tags=tags or [],
-            metadata=metadata or {}
+            metadata=merged_metadata
         )
         
         self.traces[trace_id] = trace
@@ -310,6 +317,11 @@ class LangSmithTracer:
         
         if self.enabled:
             self._send_trace_end(trace)
+
+        # Clear current trace pointer when closing the active trace.
+        if self.current_trace_id == trace_id:
+            self.current_trace_id = None
+            self.span_stack = []
         
         return trace
     
@@ -512,7 +524,20 @@ class LangSmithTracer:
     def _send_trace_start(self, trace: Trace):
         """Send trace start to LangSmith"""
         logger.debug(f"Sending trace start to LangSmith: {trace.trace_id}")
-        # In production: POST to LangSmith API
+        if self.langsmith_client:
+            try:
+                self.langsmith_client.create_run(
+                    id=trace.trace_id,
+                    name=trace.name,
+                    run_type="chain",
+                    project_name=self.project,
+                    inputs={"session_id": trace.session_id, "workflow_type": trace.workflow_type},
+                    start_time=trace.start_time,
+                    tags=trace.tags,
+                    extra={"metadata": trace.metadata},
+                )
+            except Exception as e:
+                logger.warning("Failed to send trace start to LangSmith: %s", e)
     
     def _send_trace_end(self, trace: Trace):
         """Send trace end to LangSmith"""
@@ -524,24 +549,32 @@ class LangSmithTracer:
                     trace.trace_id,
                     self.project,
                 )
-                # Convert trace to LangSmith format
-                run_data = {
-                    "name": trace.name,
-                    "run_type": "chain",
-                    "project_name": self.project,
-                    "inputs": {"session_id": trace.session_id, "workflow_type": trace.workflow_type},
-                    "outputs": {"status": trace.status.value, "total_tokens": trace.total_tokens},
-                    "start_time": trace.start_time,
-                    "end_time": trace.end_time,
-                    "extra": {
-                        "metadata": trace.metadata,
-                        "tags": trace.tags,
+
+                self.langsmith_client.update_run(
+                    trace.trace_id,
+                    end_time=trace.end_time,
+                    outputs={
+                        "status": trace.status.value,
+                        "total_tokens": trace.total_tokens,
                         "total_cost": trace.total_cost,
-                        "total_duration_ms": trace.total_duration_ms
-                    }
-                }
-                self.langsmith_client.create_run(**run_data)
-                logger.info(f"Trace {trace.trace_id} sent to LangSmith")
+                    },
+                    tags=trace.tags,
+                    extra={
+                        "metadata": trace.metadata,
+                        "total_duration_ms": trace.total_duration_ms,
+                        "span_count": len(trace.spans),
+                    },
+                    total_tokens=trace.total_tokens,
+                    total_cost=trace.total_cost,
+                )
+
+                # Ensure writes are flushed in this process for deterministic visibility.
+                try:
+                    self.langsmith_client.flush()
+                except Exception:
+                    pass
+
+                logger.info(f"Trace {trace.trace_id} sent to LangSmith with {len(trace.spans)} spans")
             except Exception as e:
                 logger.error(f"Failed to send trace to LangSmith: {e}")
         else:
@@ -555,7 +588,81 @@ class LangSmithTracer:
     def _send_span_end(self, trace_id: str, span: Span):
         """Send span end to LangSmith"""
         logger.debug(f"Sending span end to LangSmith: {span.span_id}")
-        # In production: POST to LangSmith API
+        if self.langsmith_client:
+            try:
+                # Determine run_type based on span type
+                run_type_map = {
+                    SpanType.LLM_CALL: "llm",
+                    SpanType.EXTRACTION: "tool",
+                    SpanType.VALIDATION: "tool",
+                    SpanType.ENHANCEMENT: "tool",
+                    SpanType.RETRIEVAL: "retriever",
+                    SpanType.WORKFLOW: "chain",
+                    SpanType.FOLLOWUP: "chain",
+                    SpanType.TOOL_USE: "tool",
+                    SpanType.EXPORT: "tool",
+                }
+                run_type = run_type_map.get(span.span_type, "chain")
+
+                metadata = span.metadata or {}
+                prompt_tokens = int(metadata.get("prompt_tokens", 0) or 0)
+                completion_tokens = int(metadata.get("completion_tokens", 0) or 0)
+                total_tokens = int(metadata.get("total_tokens", span.token_count or 0) or 0)
+                total_cost = float(metadata.get("total_cost", span.cost or 0.0) or 0.0)
+
+                # Build run data
+                run_data = {
+                    "id": span.span_id,
+                    "name": span.name,
+                    "run_type": run_type,
+                    "project_name": self.project,
+                    "inputs": span.inputs or {},
+                    "outputs": span.outputs or {},
+                    "start_time": span.start_time,
+                    "end_time": span.end_time,
+                    "error": span.error,
+                    # Ensure top-level spans are attached under the trace root.
+                    "parent_run_id": span.parent_span_id or trace_id,
+                    "tags": span.tags or [],
+                }
+
+                # Add tokens and cost for LLM calls
+                if span.span_type == SpanType.LLM_CALL:
+                    usage_metadata = {
+                        "input_tokens": prompt_tokens,
+                        "output_tokens": completion_tokens,
+                        "total_tokens": total_tokens,
+                        "total_cost": total_cost,
+                    }
+
+                    run_data["outputs"]["usage_metadata"] = usage_metadata
+                    run_data["usage_metadata"] = usage_metadata
+                    run_data["prompt_tokens"] = prompt_tokens
+                    run_data["completion_tokens"] = completion_tokens
+                    run_data["total_tokens"] = total_tokens
+                    run_data["total_cost"] = total_cost
+                    run_data["extra"] = {
+                        "metadata": {
+                            **metadata,
+                            "ls_provider": metadata.get("ls_provider", "openai"),
+                            "ls_model_name": metadata.get("ls_model_name") or span.inputs.get("model"),
+                        },
+                        "duration_ms": span.duration_ms,
+                    }
+                
+                # Add metadata
+                if run_data.get("extra") is None and (span.metadata or span.tags):
+                    run_data["extra"] = {
+                        "metadata": span.metadata or {},
+                        "duration_ms": span.duration_ms,
+                    }
+
+                self.langsmith_client.create_run(**run_data)
+                logger.info(f"Span {span.span_id} ({span.name}) sent to LangSmith")
+            except Exception as e:
+                logger.error(f"Failed to send span to LangSmith: {e}")
+        else:
+            logger.debug("LangSmith client not available, skipping span export")
 
 
 class SpanContext:

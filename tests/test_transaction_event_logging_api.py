@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Any
 
@@ -10,7 +11,7 @@ from sqlalchemy import text
 from apps.api.main import app
 from src.core.config.settings import settings
 from src.infrastructure.persistence.mysql.database import SessionLocal
-from src.interfaces.rest.routers import export_router, speech_router
+from src.interfaces.rest.routers import auth_router, export_router, speech_router
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -143,6 +144,62 @@ def _assert_log(
     assert row["event_message"] and operation in row["event_message"]
     if expected_actor_username is not None:
         assert row["actor_username"] == expected_actor_username
+
+
+def _latest_log_id() -> int:
+    db = SessionLocal()
+    try:
+        value = db.execute(text("SELECT COALESCE(MAX(id), 0) FROM transaction_event_logs")).scalar_one()
+        return int(value or 0)
+    finally:
+        db.close()
+
+
+def _fetch_log_after_id(
+    *,
+    min_id_exclusive: int,
+    module_name: str,
+    operation: str,
+    status: str,
+) -> dict[str, Any] | None:
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    id,
+                    actor_user_id,
+                    actor_username,
+                    module_name,
+                    operation,
+                    status,
+                    event_message,
+                    source_channel,
+                    export_format,
+                    http_status,
+                    error_message,
+                    payload,
+                    created_at
+                FROM transaction_event_logs
+                WHERE id > :min_id_exclusive
+                  AND module_name = :module_name
+                  AND operation = :operation
+                  AND status = :status
+                ORDER BY id DESC
+                LIMIT 1
+                """
+            ),
+            {
+                "min_id_exclusive": min_id_exclusive,
+                "module_name": module_name,
+                "operation": operation,
+                "status": status,
+            },
+        ).mappings().first()
+        return dict(row) if row else None
+    finally:
+        db.close()
 
 
 def _make_export_ready_session() -> str:
@@ -395,3 +452,137 @@ def test_export_logging_failure_by_format(
         export_format=export_format,
         expected_http_status=404,
     )
+
+
+def test_auth_login_failed_writes_transaction_log(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    before_id = _latest_log_id()
+
+    class _NoUserRepo:
+        def __init__(self, db: Any) -> None:
+            self.db = db
+
+        def get_by_username(self, username: str) -> None:
+            return None
+
+    monkeypatch.setattr(auth_router, "AuthRepository", _NoUserRepo)
+
+    response = client.post(
+        "/auth/token",
+        data={"username": "unknown.user", "password": "bad-password"},
+    )
+
+    assert response.status_code == 401
+
+    row = _fetch_log_after_id(
+        min_id_exclusive=before_id,
+        module_name="auth",
+        operation="login",
+        status="failed",
+    )
+    assert row is not None
+    assert row["http_status"] == 401
+    assert row["source_channel"] == "auth"
+    assert row["error_message"] == "Incorrect username or password"
+
+    payload = json.loads(row["payload"])
+    assert payload["username"] == "unknown.user"
+    assert payload["auth_method"] == "password"
+
+
+def test_auth_login_success_writes_transaction_log(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    before_id = _latest_log_id()
+
+    class _User:
+        id = 777
+        username = "audit.success"
+        role = type("RoleValue", (), {"value": "admin"})()
+        email = "audit.success@example.com"
+        full_name = "Audit Success"
+        preferred_locale = "en"
+        is_active = True
+        hashed_password = "stored-hash"
+
+    class _Repo:
+        def __init__(self, db: Any) -> None:
+            self.db = db
+
+        def get_by_username(self, username: str) -> _User | None:
+            return _User() if username == "audit.success" else None
+
+    monkeypatch.setattr(auth_router, "AuthRepository", _Repo)
+    monkeypatch.setattr(auth_router, "verify_password", lambda provided, stored: provided == "good-password")
+    monkeypatch.setattr(auth_router, "create_access_token", lambda payload: "token-for-test")
+
+    response = client.post(
+        "/auth/token",
+        data={"username": "audit.success", "password": "good-password"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == "token-for-test"
+
+    row = _fetch_log_after_id(
+        min_id_exclusive=before_id,
+        module_name="auth",
+        operation="login",
+        status="success",
+    )
+    assert row is not None
+    assert row["http_status"] == 200
+    assert row["source_channel"] == "auth"
+    assert row["actor_user_id"] == 777
+    assert row["actor_username"] == "audit.success"
+
+    payload = json.loads(row["payload"])
+    assert payload["username"] == "audit.success"
+    assert payload["auth_method"] == "password"
+
+
+def test_audit_events_endpoint_filters_rows(client: TestClient) -> None:
+    operation = f"audit_filter_{uuid.uuid4().hex[:10]}"
+
+    from src.application.services.transaction_logging_service import get_transaction_logging_service
+
+    service = get_transaction_logging_service()
+    service.log_transaction(
+        module_name="auth",
+        operation=operation,
+        status="failed",
+        source_channel="auth",
+        actor_user_id=9001,
+        actor_username="audit.filter.user",
+        http_status=401,
+        payload={"reason": "invalid_credentials"},
+    )
+    service.log_transaction(
+        module_name="speech",
+        operation=operation,
+        status="success",
+        source_channel="audio_upload",
+        actor_user_id=9002,
+        actor_username="other.user",
+        http_status=200,
+        payload={"note": "control-row"},
+    )
+
+    response = client.get(
+        "/audit/events",
+        params={
+            "operation": operation,
+            "module_name": "auth",
+            "status": "failed",
+            "actor_username": "audit.filter.user",
+            "limit": 20,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] >= 1
+    items = body["items"]
+    assert isinstance(items, list)
+    assert len(items) >= 1
+    assert all(item["operation"] == operation for item in items)
+    assert all(item["module_name"] == "auth" for item in items)
+    assert all(item["status"] == "failed" for item in items)
+    assert all(item["actor_username"] == "audit.filter.user" for item in items)

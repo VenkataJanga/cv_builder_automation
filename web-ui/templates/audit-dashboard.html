@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Dashboard</title>
+    <style>
+        :root {
+            --bg: #f4f6f8;
+            --surface: #ffffff;
+            --line: #d9dee5;
+            --ink: #0f1720;
+            --muted: #5b6673;
+            --accent: #0a6ebd;
+            --accent-soft: #e7f2fc;
+            --ok: #18794e;
+            --err: #b42318;
+            --warn: #a15c00;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(180deg, #f8fafb 0%, #eef3f8 100%);
+            color: var(--ink);
+        }
+
+        .shell {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
+        }
+
+        .title {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .subtitle {
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .panel {
+            background: var(--surface);
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .filters {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(140px, 1fr));
+            gap: 10px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        label {
+            color: var(--muted);
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        input, select {
+            height: 36px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 0 10px;
+            font-size: 14px;
+            width: 100%;
+            background: #fff;
+        }
+
+        .actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-top: 12px;
+        }
+
+        button {
+            height: 36px;
+            padding: 0 14px;
+            border-radius: 8px;
+            border: 1px solid var(--line);
+            background: #fff;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .status {
+            margin-left: auto;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .status.error {
+            color: var(--err);
+            font-weight: 600;
+        }
+
+        .badge {
+            display: inline-block;
+            min-width: 70px;
+            text-align: center;
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge.success {
+            color: var(--ok);
+            background: #e8f5ee;
+        }
+
+        .badge.failed {
+            color: var(--err);
+            background: #fdeceb;
+        }
+
+        .badge.unknown {
+            color: var(--warn);
+            background: #fff3dd;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            min-width: 980px;
+        }
+
+        thead th {
+            text-align: left;
+            background: var(--accent-soft);
+            color: #0b3555;
+            padding: 10px;
+            border-bottom: 1px solid var(--line);
+            white-space: nowrap;
+        }
+
+        tbody td {
+            padding: 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+
+        tbody tr:hover {
+            background: #f9fbfd;
+        }
+
+        .mono {
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+        }
+
+        .payload {
+            white-space: pre-wrap;
+            max-width: 320px;
+            word-break: break-word;
+        }
+
+        @media (max-width: 960px) {
+            .filters {
+                grid-template-columns: repeat(2, minmax(140px, 1fr));
+            }
+            .status {
+                margin-left: 0;
+            }
+            .actions {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <div class="header">
+            <h1 class="title">Audit Dashboard</h1>
+            <div class="subtitle">Track login events and API activity from transaction_event_logs.</div>
+        </div>
+
+        <div class="panel">
+            <div class="filters">
+                <div class="field">
+                    <label for="token">Bearer Token</label>
+                    <input id="token" type="text" placeholder="Paste JWT token">
+                </div>
+                <div class="field">
+                    <label for="module_name">Module</label>
+                    <input id="module_name" type="text" placeholder="auth, speech, export">
+                </div>
+                <div class="field">
+                    <label for="operation">Operation</label>
+                    <input id="operation" type="text" placeholder="login">
+                </div>
+                <div class="field">
+                    <label for="status">Status</label>
+                    <select id="status">
+                        <option value="">All</option>
+                        <option value="success">success</option>
+                        <option value="failed">failed</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="actor_username">Actor</label>
+                    <input id="actor_username" type="text" placeholder="username">
+                </div>
+                <div class="field">
+                    <label for="session_id">Session ID</label>
+                    <input id="session_id" type="text" placeholder="optional session id">
+                </div>
+                <div class="field">
+                    <label for="created_from">Created From</label>
+                    <input id="created_from" type="datetime-local">
+                </div>
+                <div class="field">
+                    <label for="created_to">Created To</label>
+                    <input id="created_to" type="datetime-local">
+                </div>
+                <div class="field">
+                    <label for="limit">Limit</label>
+                    <input id="limit" type="number" min="1" max="500" value="100">
+                </div>
+            </div>
+
+            <div class="actions">
+                <button id="load" class="primary" type="button">Load Events</button>
+                <button id="clear" type="button">Clear Filters</button>
+                <div id="statusText" class="status">Idle</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div id="summary" class="subtitle">No data loaded.</div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Created At</th>
+                            <th>Actor</th>
+                            <th>Module</th>
+                            <th>Operation</th>
+                            <th>Status</th>
+                            <th>HTTP</th>
+                            <th>Session</th>
+                            <th>Message</th>
+                            <th>Payload</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fields = {
+            token: document.getElementById('token'),
+            module_name: document.getElementById('module_name'),
+            operation: document.getElementById('operation'),
+            status: document.getElementById('status'),
+            actor_username: document.getElementById('actor_username'),
+            session_id: document.getElementById('session_id'),
+            created_from: document.getElementById('created_from'),
+            created_to: document.getElementById('created_to'),
+            limit: document.getElementById('limit'),
+        };
+
+        const statusText = document.getElementById('statusText');
+        const summary = document.getElementById('summary');
+        const rows = document.getElementById('rows');
+
+        function setStatus(text, isError = false) {
+            statusText.textContent = text;
+            statusText.className = isError ? 'status error' : 'status';
+        }
+
+        function toIso(localDateTime) {
+            if (!localDateTime) return '';
+            const date = new Date(localDateTime);
+            if (Number.isNaN(date.getTime())) return '';
+            return date.toISOString();
+        }
+
+        function makeBadge(status) {
+            const normalized = String(status || '').toLowerCase();
+            const css = normalized === 'success' ? 'success' : (normalized === 'failed' ? 'failed' : 'unknown');
+            return `<span class="badge ${css}">${normalized || 'unknown'}</span>`;
+        }
+
+        function safe(value) {
+            if (value === null || value === undefined) return '';
+            return String(value)
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;');
+        }
+
+        function payloadText(payload) {
+            if (!payload) return '';
+            try {
+                return JSON.stringify(payload, null, 2);
+            } catch {
+                return String(payload);
+            }
+        }
+
+        function renderTable(items) {
+            if (!Array.isArray(items) || items.length === 0) {
+                rows.innerHTML = '<tr><td colspan="10">No matching records.</td></tr>';
+                return;
+            }
+
+            rows.innerHTML = items.map((item) => {
+                return `
+                    <tr>
+                        <td class="mono">${safe(item.id)}</td>
+                        <td class="mono">${safe(item.created_at)}</td>
+                        <td>${safe(item.actor_username || '')}</td>
+                        <td>${safe(item.module_name || '')}</td>
+                        <td>${safe(item.operation || '')}</td>
+                        <td>${makeBadge(item.status)}</td>
+                        <td class="mono">${safe(item.http_status || '')}</td>
+                        <td class="mono">${safe(item.session_id || '')}</td>
+                        <td>${safe(item.event_message || '')}</td>
+                        <td class="payload mono">${safe(payloadText(item.payload))}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        async function loadEvents() {
+            const token = fields.token.value.trim();
+            const params = new URLSearchParams();
+
+            const keys = ['module_name', 'operation', 'status', 'actor_username', 'session_id', 'limit'];
+            for (const key of keys) {
+                const value = fields[key].value.trim();
+                if (value) params.set(key, value);
+            }
+
+            const createdFromIso = toIso(fields.created_from.value);
+            const createdToIso = toIso(fields.created_to.value);
+            if (createdFromIso) params.set('created_from', createdFromIso);
+            if (createdToIso) params.set('created_to', createdToIso);
+
+            const url = `/audit/events?${params.toString()}`;
+            const headers = { 'Accept': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            setStatus('Loading...');
+            summary.textContent = 'Fetching records...';
+
+            try {
+                const response = await fetch(url, { headers });
+                if (!response.ok) {
+                    const details = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${details}`);
+                }
+
+                const data = await response.json();
+                const items = Array.isArray(data.items) ? data.items : [];
+                summary.textContent = `Loaded ${items.length} event(s).`;
+                renderTable(items);
+                setStatus('Loaded successfully');
+            } catch (error) {
+                const message = error && error.message ? error.message : String(error);
+                summary.textContent = 'Failed to fetch records.';
+                rows.innerHTML = '<tr><td colspan="10">Request failed.</td></tr>';
+                setStatus(message, true);
+            }
+        }
+
+        function clearFilters() {
+            fields.module_name.value = '';
+            fields.operation.value = '';
+            fields.status.value = '';
+            fields.actor_username.value = '';
+            fields.session_id.value = '';
+            fields.created_from.value = '';
+            fields.created_to.value = '';
+            fields.limit.value = '100';
+            summary.textContent = 'Filters cleared.';
+            rows.innerHTML = '';
+            setStatus('Idle');
+        }
+
+        document.getElementById('load').addEventListener('click', loadEvents);
+        document.getElementById('clear').addEventListener('click', clearFilters);
+    </script>
+</body>
+</html>

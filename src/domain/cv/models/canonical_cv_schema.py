@@ -208,6 +208,27 @@ class CertificationModel(BaseModel):
 
 
 # ============================================================================
+# LEADERSHIP EXPERIENCE
+# ============================================================================
+
+class LeadershipModel(BaseModel):
+    """Leadership and management experience"""
+    
+    title: Optional[str] = Field(default="", description="Leadership role title")
+    organization: Optional[str] = Field(default="", description="Organization/Company")
+    teamSize: Optional[str] = Field(default="", description="Size of team led (e.g., '5-10 engineers')")
+    duration: Optional[str] = Field(default="", description="Duration of leadership role")
+    startDate: Optional[str] = Field(default="", description="Start date (YYYY-MM)")
+    endDate: Optional[str] = Field(default="", description="End date (YYYY-MM)")
+    isCurrentRole: bool = Field(default=False, description="Is this current leadership role")
+    
+    responsibilities: List[str] = Field(default_factory=list, description="Leadership responsibilities")
+    achievements: List[str] = Field(default_factory=list, description="Leadership achievements/impact")
+    skillsApplied: List[str] = Field(default_factory=list, description="Leadership skills applied")
+    mentoring: Optional[str] = Field(default="", description="Mentoring and development activities")
+
+
+# ============================================================================
 # ACHIEVEMENTS
 # ============================================================================
 
@@ -339,6 +360,7 @@ class CanonicalCVSchema(BaseModel):
     candidate: CandidateModel = Field(default_factory=CandidateModel, description="Candidate information")
     skills: SkillsModel = Field(default_factory=SkillsModel, description="Skills information")
     experience: ExperienceModel = Field(default_factory=ExperienceModel, description="Experience details")
+    leadership: List[LeadershipModel] = Field(default_factory=list, description="Leadership experience")
     education: List[EducationModel] = Field(default_factory=list, description="Education qualifications")
     certifications: List[CertificationModel] = Field(default_factory=list, description="Certifications")
     achievements: List[AchievementModel] = Field(default_factory=list, description="Achievements")
@@ -557,6 +579,7 @@ Skills = SkillsModel
 Experience = ExperienceModel
 WorkHistory = WorkHistoryModel
 Project = ProjectModel
+Leadership = LeadershipModel
 Education = EducationModel
 Certification = CertificationModel
 Achievement = AchievementModel

@@ -37,8 +37,24 @@ class TransactionAuditRepository:
 		return json.dumps(payload or {}, ensure_ascii=False, default=str)
 
 	@staticmethod
+	def _load_payload(payload_text: str | None) -> dict[str, Any]:
+		if not payload_text:
+			return {}
+		try:
+			parsed = json.loads(payload_text)
+			return parsed if isinstance(parsed, dict) else {"value": parsed}
+		except Exception:
+			return {"raw": payload_text}
+
+	@staticmethod
 	def _utc_naive_now() -> datetime:
 		return datetime.now(timezone.utc).replace(tzinfo=None)
+
+	@staticmethod
+	def _utc_naive_datetime(value: datetime) -> datetime:
+		if value.tzinfo is None:
+			return value
+		return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 	def _ensure_table(self) -> None:
 		ddl = text(
@@ -216,3 +232,82 @@ class TransactionAuditRepository:
 				db.execute(stmt, params)
 		except SQLAlchemyError as exc:
 			raise TransactionAuditRepositoryError(f"Failed to write transaction log: {exc}") from exc
+
+	def list_events(
+		self,
+		*,
+		limit: int = 100,
+		module_name: str | None = None,
+		operation: str | None = None,
+		status: str | None = None,
+		session_id: str | None = None,
+		actor_username: str | None = None,
+		created_from: datetime | None = None,
+		created_to: datetime | None = None,
+	) -> list[dict[str, Any]]:
+		limit = max(1, min(int(limit), 500))
+
+		where_parts = []
+		params: dict[str, Any] = {"limit": limit}
+
+		if module_name:
+			where_parts.append("module_name = :module_name")
+			params["module_name"] = module_name
+		if operation:
+			where_parts.append("operation = :operation")
+			params["operation"] = operation
+		if status:
+			where_parts.append("status = :status")
+			params["status"] = status
+		if session_id:
+			where_parts.append("session_id = :session_id")
+			params["session_id"] = session_id
+		if actor_username:
+			where_parts.append("actor_username = :actor_username")
+			params["actor_username"] = actor_username
+		if created_from:
+			where_parts.append("created_at >= :created_from")
+			params["created_from"] = self._utc_naive_datetime(created_from)
+		if created_to:
+			where_parts.append("created_at <= :created_to")
+			params["created_to"] = self._utc_naive_datetime(created_to)
+
+		where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+		stmt = text(
+			f"""
+			SELECT
+				id,
+				session_id,
+				actor_user_id,
+				actor_username,
+				module_name,
+				operation,
+				status,
+				event_message,
+				source_channel,
+				export_format,
+				http_status,
+				error_code,
+				error_message,
+				payload,
+				created_at
+			FROM transaction_event_logs
+			{where_clause}
+			ORDER BY created_at DESC, id DESC
+			LIMIT :limit
+			"""
+		)
+
+		try:
+			with self._db() as db:
+				rows = db.execute(stmt, params).mappings().all()
+		except SQLAlchemyError as exc:
+			raise TransactionAuditRepositoryError(f"Failed to query transaction logs: {exc}") from exc
+
+		result = []
+		for row in rows:
+			record = dict(row)
+			record["payload"] = self._load_payload(record.get("payload"))
+			result.append(record)
+
+		return result

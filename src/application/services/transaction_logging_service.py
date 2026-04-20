@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from datetime import datetime
 
 from src.core.security.auth_context import get_auth_context
 from src.observability.langsmith_tracer import SpanStatus, SpanType, get_langsmith_tracer
@@ -136,12 +137,19 @@ class TransactionLoggingService:
         error_code: str | None = None,
         error_message: str | None = None,
         payload: dict[str, Any] | None = None,
+        actor_user_id: int | None = None,
+        actor_username: str | None = None,
     ) -> None:
         repo = self._get_repository()
         if repo is None:
             return
 
-        actor_user_id, actor_username = self._resolve_actor()
+        resolved_actor_user_id, resolved_actor_username = self._resolve_actor()
+        if actor_user_id is None:
+            actor_user_id = resolved_actor_user_id
+        if actor_username is None:
+            actor_username = resolved_actor_username
+
         event_message = self._build_event_message(
             module_name=module_name,
             operation=operation,
@@ -183,6 +191,37 @@ class TransactionLoggingService:
             payload=payload,
             actor_username=actor_username,
         )
+
+    def list_transactions(
+        self,
+        *,
+        limit: int = 100,
+        module_name: str | None = None,
+        operation: str | None = None,
+        status: str | None = None,
+        session_id: str | None = None,
+        actor_username: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        repo = self._get_repository()
+        if repo is None:
+            return []
+
+        try:
+            return repo.list_events(
+                limit=limit,
+                module_name=module_name,
+                operation=operation,
+                status=status,
+                session_id=session_id,
+                actor_username=actor_username,
+                created_from=created_from,
+                created_to=created_to,
+            )
+        except TransactionAuditRepositoryError as exc:
+            logger.warning("Transaction log query failed: %s", exc)
+            return []
 
 
 _TRANSACTION_LOGGING_SERVICE = TransactionLoggingService()

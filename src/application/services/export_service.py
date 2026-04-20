@@ -209,10 +209,13 @@ class ExportService:
             # Experience & Leadership - PRESERVE STRUCTURED DATA
             "work_experience": cv_data.get("work_experience", []),
             "project_experience": cv_data.get("project_experience", []),  # Keep as list for table population
-            "leadership_lines": cv_data.get("leadership", {}),
+            "leadership": cv_data.get("leadership", []),
+            "leadership_section": self._format_leadership_section(cv_data.get("leadership", [])),
+            "leadership_lines": cv_data.get("leadership", []),  # Keep structured for rendering
             
             # Education & Certifications - PRESERVE STRUCTURED DATA + Individual Fields
             "education": cv_data.get("education", []),
+            "education_section": self._format_education_section(cv_data.get("education", [])),
             "certifications": sanitized_certifications,
             
             # Individual education fields for template placeholders
@@ -1038,6 +1041,87 @@ class ExportService:
                 formatted.append("\n".join(cert_text))
         
         return "\n".join(formatted) if formatted else ""
+
+    def _format_leadership_section(self, leadership: list) -> str:
+        """Format leadership experience as ATS-friendly bullet points."""
+        if not leadership:
+            return ""
+        
+        formatted = []
+        for lead in leadership:
+            if not isinstance(lead, dict):
+                continue
+            
+            # Extract fields with multiple possible keys
+            title = lead.get("title") or lead.get("position") or lead.get("role") or ""
+            organization = lead.get("organization") or lead.get("company") or ""
+            team_size = lead.get("team_size") or lead.get("teamSize") or ""
+            duration = lead.get("duration") or lead.get("period") or ""
+            if not duration:
+                start = lead.get("start_date") or lead.get("startDate") or ""
+                end = lead.get("end_date") or lead.get("endDate") or ""
+                if lead.get("is_current_role") and not end:
+                    end = "Present"
+                if start or end:
+                    duration = f"{str(start).strip()} - {str(end).strip()}".strip(" -")
+            
+            responsibilities = lead.get("responsibilities") or []
+            achievements = lead.get("achievements") or []
+            mentoring = lead.get("mentoring") or ""
+            
+            lead_text = []
+            
+            # Title and Organization
+            if title and organization:
+                lead_text.append(f"{title} at {organization}")
+            elif title:
+                lead_text.append(title)
+            elif organization:
+                lead_text.append(organization)
+            
+            # Team Size and Duration
+            details = []
+            if team_size:
+                details.append(f"Team: {team_size}")
+            if duration:
+                details.append(duration)
+            if details:
+                lead_text.append(" | ".join(details))
+            
+            # Responsibilities
+            if responsibilities:
+                if isinstance(responsibilities, list):
+                    for resp in responsibilities:
+                        cleaned = str(resp).strip()
+                        if cleaned:
+                            lead_text.append(f"• {cleaned}")
+                else:
+                    cleaned = str(responsibilities).strip()
+                    if cleaned:
+                        lead_text.append(f"• {cleaned}")
+            
+            # Achievements/Impact
+            if achievements:
+                if isinstance(achievements, list):
+                    for ach in achievements:
+                        cleaned = str(ach).strip()
+                        if cleaned:
+                            lead_text.append(f"• {cleaned}")
+                else:
+                    cleaned = str(achievements).strip()
+                    if cleaned:
+                        lead_text.append(f"• {cleaned}")
+            
+            # Mentoring activities
+            if mentoring:
+                mentoring_text = str(mentoring).strip()
+                if mentoring_text:
+                    lead_text.append(f"Mentoring: {mentoring_text}")
+            
+            if lead_text:
+                formatted.append("\n".join(lead_text))
+        
+        return "\n\n".join(formatted) if formatted else ""
 
     def mark_extraction_exported(self, extraction_id: str) -> None:
         """

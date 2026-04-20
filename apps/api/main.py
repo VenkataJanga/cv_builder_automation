@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.core.config.settings import settings
 from src.core.constants import APP_JS_PATH, HEALTH_PATH, HEALTH_STATUS_OK, INDEX_PATH, ROOT_PATH, STYLES_PATH
 from src.infrastructure.persistence.mysql.database import ensure_schema_initialized
+from src.interfaces.rest.routers.audit_router import router as audit_router
 from src.interfaces.rest.routers.auth_router import router as auth_router
 from src.interfaces.rest.routers.chat_router import router as chat_router
 from src.interfaces.rest.routers.cv_router import router as cv_router
@@ -99,6 +100,7 @@ def health():
     return {"status": HEALTH_STATUS_OK}
 
 app.include_router(auth_router)
+app.include_router(audit_router)
 app.include_router(chat_router)
 app.include_router(session_router)
 app.include_router(preview_router)
@@ -123,6 +125,11 @@ def index():
 @app.get("/preview-renderer-test.html")
 def preview_renderer_test():
     return FileResponse(str(WEB_UI_TEMPLATES_DIR / "preview-renderer-test.html"))
+
+
+@app.get("/audit-dashboard.html")
+def audit_dashboard():
+    return FileResponse(str(WEB_UI_TEMPLATES_DIR / "audit-dashboard.html"))
 
 @app.get(STYLES_PATH)
 def styles():

@@ -8,10 +8,11 @@ from src.core.logging.logger import get_logger
 try:
     from docx import Document
     from docx.shared import Inches
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 except ImportError:
     # Fallback for environments where python-docx is not available
     Document = None
+    WD_BREAK = None
 
 
 logger = get_logger(__name__)
@@ -143,6 +144,9 @@ class DocxRenderer:
                 # Create from scratch if template not found
                 doc = self._create_template_structure(context)
 
+            # Add page break after header section if document has multiple sections
+            self._add_page_break_after_header(doc, context)
+
             # Enforce export header/footer formatting across templates.
             self._apply_export_header_footer(doc)
             
@@ -156,6 +160,48 @@ class DocxRenderer:
             # Fallback to programmatic generation on any error
             print(f"Warning: Template rendering failed ({e}), using fallback")
             return self._render_fallback(context)
+
+    def _add_page_break_after_header(self, doc: Document, context: Dict[str, Any]) -> None:
+        """
+        Add a page break after the header/personal information section if document is multi-section.
+        This ensures clean separation between header and content.
+        """
+        try:
+            if len(doc.paragraphs) < 2:
+                return
+            
+            # Look for header section indicators (name, email, personal info patterns)
+            header_end_idx = -1
+            found_header = False
+            
+            for idx, para in enumerate(doc.paragraphs):
+                para_text = para.text.strip().lower()
+                
+                # Check for personal info section indicators
+                if any(indicator in para_text for indicator in [
+                    "personal", "information", "contact", "details", "profile"
+                ]):
+                    found_header = True
+                
+                # Check for main content start indicators
+                if found_header and any(section in para_text for section in [
+                    "summary", "professional summary", "executive summary",
+                    "skills", "expertise", "work experience", "experience",
+                    "projects", "project", "education", "qualifications"
+                ]):
+                    header_end_idx = idx
+                    break
+            
+            # If we found a header section, add a page break
+            if header_end_idx > 0 and header_end_idx < len(doc.paragraphs):
+                # Insert a page break via a run on the paragraph before the content section
+                para = doc.paragraphs[header_end_idx]
+                run = para.insert_paragraph_before().add_run()
+                run.add_break(WD_BREAK.PAGE)
+                
+        except Exception as e:
+            # Page break is cosmetic, so don't fail the whole export
+            print(f"Warning: Failed to add page break after header: {e}")
 
     def _apply_export_header_footer(self, doc: Document) -> None:
         """Apply standardized header/footer formatting to all sections."""
@@ -838,35 +884,132 @@ class DocxRenderer:
     def _add_experience_sections(self, doc: Document, context: Dict[str, Any]) -> None:
         """Add experience sections to the document"""
         # Work Experience
-        if context.get("work_experience"):
+        if context.get("experience_section"):
+            doc.add_heading("Work Experience", level=2)
+            exp_content = str(context.get("experience_section", ""))
+            for line in exp_content.split("\n\n"):
+                if line.strip():
+                    doc.add_paragraph(line.strip())
+        elif context.get("work_experience"):
             doc.add_heading("Work Experience", level=2)
             doc.add_paragraph(str(context.get("work_experience")))
         
         # Project Experience
-        if context.get("project_experience"):
+        if context.get("projects_section"):
+            doc.add_heading("Project Experience", level=2)
+            proj_content = str(context.get("projects_section", ""))
+            for line in proj_content.split("\n\n"):
+                if line.strip():
+                    doc.add_paragraph(line.strip())
+        elif context.get("project_experience"):
             doc.add_heading("Project Experience", level=2)
             doc.add_paragraph(str(context.get("project_experience")))
         
-        # Leadership
-        if context.get("leadership_lines"):
-            doc.add_heading("Leadership & Impact", level=2)
-            doc.add_paragraph(str(context.get("leadership_lines")))
+        # Leadership & Impact
+        if context.get("leadership_section"):
+            doc.add_heading("Leadership Experience", level=2)
+            lead_content = str(context.get("leadership_section", ""))
+            for line in lead_content.split("\n\n"):
+                if line.strip():
+                    doc.add_paragraph(line.strip())
+        elif context.get("leadership_lines") and isinstance(context.get("leadership_lines"), list) and context.get("leadership_lines"):
+            doc.add_heading("Leadership Experience", level=2)
+            for lead in context.get("leadership_lines", []):
+                if isinstance(lead, dict):
+                    title = lead.get("title", "")
+                    organization = lead.get("organization", "")
+                    if title or organization:
+                        doc.add_paragraph(f"{title} at {organization}", style='List Number')
+                        team_size = lead.get("team_size", "")
+                        if team_size:
+                            doc.add_paragraph(f"Team Size: {team_size}")
+                        responsibilities = lead.get("responsibilities", [])
+                        if responsibilities:
+                            for resp in responsibilities:
+                                doc.add_paragraph(str(resp), style='List Bullet 2')
 
     def _add_education_sections(self, doc: Document, context: Dict[str, Any]) -> None:
         """Add education and additional sections"""
-        sections = [
-            ("Education", "education"),
-            ("Certifications", "certifications"),
-            ("Languages", "languages"),
-            ("Awards & Recognition", "awards"),
-            ("Publications", "publications"),
-        ]
+        # Education - use formatted section if available
+        if context.get("education_section"):
+            doc.add_heading("Education", level=2)
+            edu_content = str(context.get("education_section", ""))
+            for line in edu_content.split("\n\n"):
+                if line.strip():
+                    para = doc.add_paragraph(line.strip())
+                    # Apply bullet formatting if it contains multiple lines
+                    if "\n" in line:
+                        para.style = 'List Bullet'
+        elif context.get("education"):
+            doc.add_heading("Education", level=2)
+            education = context.get("education", [])
+            if isinstance(education, list):
+                for edu in education:
+                    if isinstance(edu, dict):
+                        degree = edu.get("degree", "") or edu.get("qualification", "")
+                        field = edu.get("field_of_study", "") or edu.get("specialization", "")
+                        institution = edu.get("institution", "") or edu.get("college", "") or edu.get("university", "")
+                        year = edu.get("year", "") or edu.get("graduation_year", "") or edu.get("yearOfPassing", "")
+                        grade = edu.get("grade", "") or edu.get("percentage", "") or edu.get("cgpa", "")
+                        
+                        edu_text = []
+                        if degree:
+                            if field:
+                                edu_text.append(f"{degree} in {field}")
+                            else:
+                                edu_text.append(degree)
+                        if institution:
+                            edu_text.append(institution)
+                        if year:
+                            edu_text.append(f"({year})")
+                        if grade:
+                            edu_text.append(f"Grade: {grade}")
+                        
+                        if edu_text:
+                            doc.add_paragraph(" | ".join(edu_text))
+            else:
+                doc.add_paragraph(str(education))
         
-        for section_title, context_key in sections:
-            content = context.get(context_key, "")
-            if content:
-                doc.add_heading(section_title, level=2)
-                doc.add_paragraph(str(content))
+        # Certifications
+        if context.get("certifications_section"):
+            doc.add_heading("Certifications", level=2)
+            cert_content = str(context.get("certifications_section", ""))
+            for line in cert_content.split("\n"):
+                if line.strip():
+                    doc.add_paragraph(line.strip(), style='List Bullet' if "•" in line else None)
+        elif context.get("certifications"):
+            doc.add_heading("Certifications", level=2)
+            doc.add_paragraph(str(context.get("certifications")))
+        
+        # Languages
+        languages_section = context.get("languages")
+        if languages_section:
+            doc.add_heading("Languages", level=2)
+            if isinstance(languages_section, list):
+                for lang in languages_section:
+                    doc.add_paragraph(str(lang), style='List Bullet')
+            else:
+                doc.add_paragraph(str(languages_section))
+        
+        # Awards & Recognition
+        if context.get("awards"):
+            doc.add_heading("Awards & Recognition", level=2)
+            awards = context.get("awards", [])
+            if isinstance(awards, list):
+                for award in awards:
+                    doc.add_paragraph(str(award), style='List Bullet')
+            else:
+                doc.add_paragraph(str(awards))
+        
+        # Publications
+        if context.get("publications"):
+            doc.add_heading("Publications", level=2)
+            publications = context.get("publications", [])
+            if isinstance(publications, list):
+                for pub in publications:
+                    doc.add_paragraph(str(pub), style='List Bullet')
+            else:
+                doc.add_paragraph(str(publications))
 
     def _populate_structured_table(self, table, context: Dict[str, Any]) -> bool:
         """Populate structured data tables based on their content and headers"""

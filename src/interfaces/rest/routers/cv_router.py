@@ -834,9 +834,10 @@ def review_cv(session_id: str, request: ReviewCVRequest):
     session["has_user_edits"] = True
     session["validation_results"] = validation_dict
     session["validation"] = validation_dict
-    # Save & Validate: produce the frozen resolved_canonical that preview/export will use.
-    # This is the only place where resolved_canonical is generated from flow_stages.
-    conversation_service.resolve_and_freeze_canonical(session)
+    # Save & Validate: the reviewed canonical is the source of truth.
+    # Freezing from flow stages can reintroduce stale upload values and drop user fixes.
+    session["resolved_canonical"] = canonical_cv
+    session["resolved_at"] = datetime.utcnow().isoformat()
     conversation_service.save_session(session_id, session)
 
     _log_cv_event(
