@@ -149,6 +149,17 @@ class AudioCVService:
         always win; LLM output only fills genuine gaps.
         """
         if not (settings.ENABLE_LLM_EXTRACTION or settings.ENABLE_LLM_NORMALIZATION):
+            # Measure 6: Warn when LLM enrichment is disabled so operators know
+            # that sparse project/domain data will not be rescued by LLM.
+            project_count = len(
+                (audio_canonical.get("experience") or {}).get("projects") or []
+            )
+            logger.warning(
+                "CONFIGURATION: ENABLE_LLM_EXTRACTION and ENABLE_LLM_NORMALIZATION are both "
+                "False. LLM-based project rescue and role/domain disambiguation are disabled. "
+                f"Parsed project count: {project_count}. "
+                "Set at least one flag to True to enable full LLM enrichment."
+            )
             return audio_canonical
 
         try:
@@ -208,6 +219,8 @@ class AudioCVService:
         self._set_if_missing(candidate, "fullName", pd.get("full_name"))
         self._set_if_missing(candidate, "email", pd.get("email"))
         self._set_if_missing(candidate, "phoneNumber", pd.get("phone"))
+        # Measure 3: Only fill currentDesignation from personal_details.current_title.
+        # Never map summary.target_role into currentDesignation — they are distinct fields.
         self._set_if_missing(candidate, "currentDesignation", pd.get("current_title"))
         self._set_if_missing(candidate, "currentOrganization", pd.get("current_organization"))
         self._set_if_missing(candidate, "totalExperienceYears", pd.get("total_experience"))
@@ -217,6 +230,11 @@ class AudioCVService:
             candidate, "summary",
             summary_obj.get("professional_summary") or summary_obj.get("summary")
         )
+        # Measure 3: Preserve target_role (desired/future role) in careerObjective —
+        # a separate canonical field — so it never collides with currentDesignation.
+        llm_target_role = summary_obj.get("target_role")
+        if self._is_truthy(llm_target_role):
+            self._set_if_missing(candidate, "careerObjective", llm_target_role)
 
         # --- Skills ---
         skills_obj = audio_canonical.setdefault("skills", {})

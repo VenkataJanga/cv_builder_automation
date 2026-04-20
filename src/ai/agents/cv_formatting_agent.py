@@ -117,6 +117,18 @@ class CVFormattingAgent:
                 cv_data.get("domain_expertise", [])
                 or (skills.get("domain_expertise", []) if isinstance(skills, dict) else [])
             ),
+            "development_tools": self._format_skills(skills.get("development_tools", []) if isinstance(skills, dict) else cv_data.get("development_tools", [])),
+            "crm_tools": self._format_skills(skills.get("crm_tools", []) if isinstance(skills, dict) else cv_data.get("crm_tools", [])),
+            "database_connectivity": self._format_skills(skills.get("database_connectivity", []) if isinstance(skills, dict) else cv_data.get("database_connectivity", [])),
+            "sql_skills": self._format_skills(skills.get("sql_skills", []) if isinstance(skills, dict) else cv_data.get("sql_skills", [])),
+            "erp": self._format_skills(skills.get("erp", []) if isinstance(skills, dict) else cv_data.get("erp", [])),
+            "legacy_systems": self._format_skills(skills.get("legacy_systems", []) if isinstance(skills, dict) else cv_data.get("legacy_systems", [])),
+            "networking": self._format_skills(skills.get("networking", []) if isinstance(skills, dict) else cv_data.get("networking", [])),
+            "testing_tools": self._format_skills(skills.get("testing_tools", []) if isinstance(skills, dict) else cv_data.get("testing_tools", [])),
+            "documentation": self._format_skills(skills.get("documentation", []) if isinstance(skills, dict) else cv_data.get("documentation", [])),
+            "configuration_management": self._format_skills(skills.get("configuration_management", []) if isinstance(skills, dict) else cv_data.get("configuration_management", [])),
+            "client_server_technologies": self._format_skills(skills.get("client_server_technologies", []) if isinstance(skills, dict) else cv_data.get("client_server_technologies", [])),
+            "foreign_language_known": self._format_skills(skills.get("foreign_language_known", []) if isinstance(skills, dict) else cv_data.get("foreign_language_known", [])),
             "employment": employment,
             "leadership": self._format_leadership(leadership),
             "work_experience": cv_data.get("work_experience", []),

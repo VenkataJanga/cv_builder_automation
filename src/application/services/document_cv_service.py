@@ -457,6 +457,18 @@ class DocumentCVService:
             session["validation_results"] = validation_result
             session["last_source"] = "document_upload"
             session["document_metadata"] = file_metadata or {}
+            # Register immutable flow stage — the document pipeline's processed output
+            # becomes the stable canonical base for preview, edit, and export.
+            # Switch flow first so any previous audio/conversation stage is archived.
+            from src.application.services.conversation_service import ConversationService as _ConvSvc  # noqa: PLC0415
+            _conv = _ConvSvc()
+            _conv.switch_flow(session, _ConvSvc.FLOW_DOCUMENT_UPLOAD)
+            _conv.set_flow_stage(
+                session,
+                _ConvSvc.FLOW_DOCUMENT_UPLOAD,
+                merged_canonical,
+                source_metadata={"filename": (file_metadata or {}).get("filename", "")},
+            )
             
             self._save_session(session_id, session)
             

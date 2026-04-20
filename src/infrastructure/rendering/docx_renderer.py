@@ -328,6 +328,31 @@ class DocxRenderer:
         new_text = full_text
         replaced = False
         
+        # Render summary placeholder as ATS-friendly bullet lines.
+        if any(ph in {"professional_summary", "summary"} for ph in placeholders):
+            summary_value = self._get_mapped_value("professional_summary", context) or self._get_mapped_value("summary", context)
+            summary_lines = self._split_summary_lines(summary_value)
+            if summary_lines:
+                paragraph.clear()
+                if len(summary_lines) == 1:
+                    paragraph.add_run(summary_lines[0])
+                else:
+                    for idx, line in enumerate(summary_lines):
+                        run = paragraph.add_run(f"• {line}")
+                        if idx < len(summary_lines) - 1:
+                            run.add_break()
+                return
+
+        # Render projects with bold labels for ATS readability.
+        project_placeholders = {"projects_section", "project_section", "project_experience"}
+        project_ph = next((ph for ph in placeholders if ph in project_placeholders), None)
+        if project_ph:
+            project_value = self._get_mapped_value(project_ph, context)
+            if project_value and str(project_value).strip():
+                paragraph.clear()
+                self._render_project_lines_with_bold_labels(paragraph, str(project_value))
+                return
+
         # Replace {{placeholder}} format using field mapping
         for placeholder in placeholders:
             placeholder_pattern = f"{{{{{placeholder}}}}}"
@@ -369,8 +394,11 @@ class DocxRenderer:
             replaced = True
             return  # Early return since we've manually handled this paragraph
         
+        # Apply broad regex replacements only for short label-like paragraphs.
+        is_label_like = len(full_text.strip()) <= 180 and "\n" not in full_text
+
         # Also handle generic patterns for broader compatibility
-        if context.get("employee_id"):
+        if is_label_like and context.get("employee_id"):
             # Replace various employee ID patterns - FIXED: Changed (\d*) to ([^\n,]*) to match actual content
             emp_id_patterns = [
                 r'(Portal\s*id[/\s]*emp\s*id\s*:?\s*)([^\n,]*)',
@@ -385,7 +413,7 @@ class DocxRenderer:
                     new_text = re.sub(pattern, f'\\g<1>{context["employee_id"]}', new_text, flags=re.IGNORECASE)
                     replaced = True
         
-        if context.get("contact_number"):
+        if is_label_like and context.get("contact_number"):
             # Replace contact number patterns - FIXED: Changed (\d*) to ([^\n,]*) to match actual content
             contact_patterns = [
                 r'(Contact\s*Details?\s*:?\s*)([^\n,]*)',
@@ -401,22 +429,27 @@ class DocxRenderer:
         
         # Replace other common field patterns - ENHANCED with better regex patterns
         field_patterns = {
-            "full_name": [r'(Name\s*:?,?\s*)([A-Za-z\s]*,?)'],
+            # Match only dedicated Name lines; avoid replacing substrings like
+            # "Project Name:" inside content sections.
+            "full_name": [r'^\s*(Name\s*:?,?\s*)([^\n,]*)$'],
             "email": [r'(Email\s*:?\s*)([a-zA-Z0-9._%+-]*@?[a-zA-Z0-9.-]*\.?[a-zA-Z]*)'],
             "current_title": [r'(Title\s*:?\s*)([A-Za-z\s]*)', r'(Designation\s*:?\s*)([A-Za-z\s]*)'],
             "location": [r'(Location\s*:?\s*)([A-Za-z\s,.-]*)'],  # Enhanced to match commas, periods, hyphens
             "organization": [r'(Current\s*Organization\s*:?\s*)([A-Za-z\s]*)', r'(Organization\s*:?\s*)([A-Za-z\s]*)', r'(Company\s*:?\s*)([A-Za-z\s]*)'],  # Added "Current Organization"
-            "experience": [r'(Experience\s*:?\s*)([0-9+\s\w]*)'],
+            # Require an explicit colon to avoid matching headings like
+            # "PROFESSIONAL EXPERIENCE" and appending numeric values there.
+            "experience": [r'(Experience\s*:\s*)([^\n,]*)'],
             "grade": [r'(Grade\s*:?\s*)([A-Za-z0-9\s]*)', r'(CURRENT\s*GRADE\s*:?\s*)([A-Za-z0-9\s]*)'],
         }
         
-        for field_key, patterns in field_patterns.items():
-            field_value = context.get(field_key)
-            if field_value:
-                for pattern in patterns:
-                    if re.search(pattern, new_text, re.IGNORECASE):
-                        new_text = re.sub(pattern, f'\\g<1>{field_value}', new_text, flags=re.IGNORECASE)
-                        replaced = True
+        if is_label_like:
+            for field_key, patterns in field_patterns.items():
+                field_value = context.get(field_key)
+                if field_value:
+                    for pattern in patterns:
+                        if re.search(pattern, new_text, re.IGNORECASE):
+                            new_text = re.sub(pattern, f'\\g<1>{field_value}', new_text, flags=re.IGNORECASE)
+                            replaced = True
         
         # Update paragraph text while preserving formatting
         if replaced and new_text != full_text:
@@ -424,6 +457,35 @@ class DocxRenderer:
             paragraph.clear()
             # Add new text
             paragraph.add_run(new_text)
+
+    def _render_project_lines_with_bold_labels(self, paragraph, project_text: str) -> None:
+        """Render project section lines with selected labels in bold."""
+        lines = str(project_text or "").replace("\r\n", "\n").split("\n")
+        bold_labels = ["Project Name:", "Client:", "Role:", "Duration:", "Description:"]
+        label_pattern = re.compile(r"^(Project Name:|Client:|Role:|Duration:|Description:)\s*(.*)$", re.IGNORECASE)
+
+        wrote_any = False
+        for idx, raw_line in enumerate(lines):
+            line = raw_line.strip()
+            if not line:
+                if wrote_any and idx < len(lines) - 1:
+                    paragraph.add_run("").add_break()
+                continue
+
+            m = label_pattern.match(line)
+            if m:
+                label = next((lbl for lbl in bold_labels if lbl.lower() == m.group(1).lower()), m.group(1))
+                value = m.group(2).strip()
+                label_run = paragraph.add_run(label)
+                label_run.bold = True
+                if value:
+                    paragraph.add_run(f" {value}")
+            else:
+                paragraph.add_run(line)
+
+            wrote_any = True
+            if idx < len(lines) - 1:
+                paragraph.add_run("").add_break()
     
     def _get_mapped_value(self, placeholder: str, context: Dict[str, Any]) -> str:
         """Get value for placeholder using field mapping with smart formatting"""
@@ -1097,8 +1159,8 @@ class DocxRenderer:
             work_exp = context.get("work_experience", "")
             if not work_exp:
                 return False
-                
-            # Parse work experience
+
+            # Parse work experience from either list or text format
             experiences = self._parse_work_experience(work_exp)
             
             # Populate each experience
@@ -1125,14 +1187,21 @@ class DocxRenderer:
                     
                     # Joining Date (column 3)
                     cells[3].paragraphs[0].clear()
-                    duration_parts = exp.get("duration", "").split(" - ")
-                    if len(duration_parts) >= 1:
-                        cells[3].paragraphs[0].add_run(duration_parts[0])
+                    start_val = exp.get("startDate") or ""
+                    end_val = exp.get("endDate") or ""
+                    if not start_val:
+                        duration_parts = str(exp.get("duration", "")).split(" - ")
+                        if len(duration_parts) >= 1:
+                            start_val = duration_parts[0].strip()
+                        if len(duration_parts) >= 2 and not end_val:
+                            end_val = duration_parts[1].strip()
+                    if start_val:
+                        cells[3].paragraphs[0].add_run(str(start_val))
                     
                     # Relieving Date (column 4)
                     cells[4].paragraphs[0].clear()
-                    if len(duration_parts) >= 2:
-                        cells[4].paragraphs[0].add_run(duration_parts[1])
+                    if end_val:
+                        cells[4].paragraphs[0].add_run(str(end_val))
                     
                 row_idx += 1
                 
@@ -1389,12 +1458,39 @@ class DocxRenderer:
             
         return projects
 
-    def _parse_work_experience(self, work_exp_text: str) -> list:
-        """Parse work experience text into structured data"""
+    def _parse_work_experience(self, work_exp_text) -> list:
+        """Parse work experience from structured list or legacy text format."""
         experiences = []
         try:
+            if isinstance(work_exp_text, list):
+                for exp in work_exp_text:
+                    if not isinstance(exp, dict):
+                        continue
+                    company = exp.get("organization") or exp.get("company") or ""
+                    title = exp.get("designation") or exp.get("title") or exp.get("role") or ""
+                    start = exp.get("employmentStartDate") or exp.get("startDate") or exp.get("start_date") or ""
+                    end = exp.get("employmentEndDate") or exp.get("endDate") or exp.get("end_date") or ""
+                    if exp.get("isCurrentCompany") and not end:
+                        end = "Present"
+                    duration = exp.get("duration") or ""
+                    if not duration and (start or end):
+                        duration = f"{str(start).strip()} - {str(end).strip()}".strip(" -")
+
+                    parsed = {
+                        "title": title,
+                        "company": company,
+                        "duration": duration,
+                        "startDate": start,
+                        "endDate": end,
+                        "location": exp.get("location") or "",
+                        "responsibilities": exp.get("responsibilities") or [],
+                    }
+                    if parsed.get("title") or parsed.get("company"):
+                        experiences.append(parsed)
+                return experiences
+
             # Split by double newlines (experience separators)
-            exp_sections = work_exp_text.split('\n\n')
+            exp_sections = str(work_exp_text).split('\n\n')
             
             for section in exp_sections:
                 exp = {}
@@ -1421,11 +1517,62 @@ class DocxRenderer:
             
         return experiences
 
-    def _parse_certifications(self, cert_text: str) -> list:
-        """Parse certifications text into structured data"""
+    def _parse_certifications(self, cert_text) -> list:
+        """Parse certifications from structured list or legacy text format."""
         certifications = []
         try:
-            lines = cert_text.split('\n')
+            if isinstance(cert_text, list):
+                pending_name_idx = -1
+                date_like = re.compile(r"^/?\d{1,2}/\d{1,2}/\d{2,4}$|^/?\d{1,2}/\d{2,4}$")
+                i = 0
+                while i < len(cert_text):
+                    cert = cert_text[i]
+                    if isinstance(cert, dict):
+                        name = cert.get("name") or cert.get("certification") or cert.get("title") or ""
+                        if not str(name).strip():
+                            i += 1
+                            continue
+                        certifications.append({
+                            "name": str(name).strip(),
+                            "year": str(cert.get("year") or cert.get("date") or cert.get("issueDate") or "").strip(),
+                            "issuer": str(cert.get("issuer") or cert.get("issuingOrganization") or cert.get("organization") or "").strip(),
+                        })
+                        pending_name_idx = len(certifications) - 1
+                        i += 1
+                        continue
+
+                    if isinstance(cert, str) and cert.strip():
+                        token = cert.strip().lstrip("•").strip()
+                        if not token:
+                            i += 1
+                            continue
+
+                        if date_like.match(token):
+                            if pending_name_idx >= 0 and pending_name_idx < len(certifications):
+                                existing = certifications[pending_name_idx].get("year", "").strip()
+                                certifications[pending_name_idx]["year"] = f"{existing} - {token}".strip(" -") if existing else token
+                            i += 1
+                            continue
+
+                        # Merge split name fragments like "SAS" + "ODI tools" when date follows.
+                        if (
+                            i + 1 < len(cert_text)
+                            and isinstance(cert_text[i + 1], str)
+                            and cert_text[i + 1].strip()
+                            and not date_like.match(cert_text[i + 1].strip().lstrip("•").strip())
+                            and i + 2 < len(cert_text)
+                            and isinstance(cert_text[i + 2], str)
+                            and date_like.match(cert_text[i + 2].strip().lstrip("•").strip())
+                        ):
+                            token = f"{token}, {cert_text[i + 1].strip().lstrip('•').strip()}"
+                            i += 1
+
+                        certifications.append({"name": token, "year": "", "issuer": ""})
+                        pending_name_idx = len(certifications) - 1
+                    i += 1
+                return certifications
+
+            lines = str(cert_text).split('\n')
             for line in lines:
                 if line.strip().startswith('•'):
                     cert = {}
@@ -1992,20 +2139,20 @@ class DocxRenderer:
                                     description = desc_match.group(1).strip()
                         
                         mapped_project = {
-                            "name": proj.get("project_name", proj.get("name", "")),
-                            "client": client,
-                            "description": description,
+                            "name": proj.get("project_name", proj.get("projectName", proj.get("name", ""))),
+                            "client": proj.get("client_name", proj.get("clientName", client)),
+                            "description": proj.get("projectDescription", description),
                             "technologies": self._format_technologies(
                                 proj.get("technologies_used", 
                                 proj.get("technologies", 
-                                proj.get("tech_stack", [])))
+                                proj.get("tech_stack", proj.get("toolsUsed", proj.get("environment", [])))))
                             ),
-                            "duration": proj.get("duration", ""),
+                            "duration": proj.get("duration", "") or self._build_project_duration(proj),
                             "role": proj.get("role", proj.get("position", "")),
                             "contributions": proj.get("responsibilities", 
                                 proj.get("key_responsibilities", 
                                 proj.get("contributions", []))),
-                            "team_size": proj.get("team_size", "")
+                            "team_size": proj.get("team_size", proj.get("teamSize", ""))
                         }
                         projects.append(mapped_project)
             
@@ -2300,10 +2447,10 @@ class DocxRenderer:
                 
                 cert_text = cert.get("name", "")
                 year = cert.get("year", "")
-                if year:
-                    t.text = f"• {cert_text} ({year})"
-                else:
-                    t.text = f"• {cert_text}"
+                issuer = cert.get("issuer", "")
+                parts = [p for p in [issuer, year] if str(p).strip()]
+                suffix = f" ({' | '.join(parts)})" if parts else ""
+                t.text = f"• {cert_text}{suffix}"
                 
                 r.append(t)
                 p.append(r)
@@ -2331,12 +2478,47 @@ class DocxRenderer:
             lines = [line.strip() for line in single.split("\n") if line.strip()]
 
         cleaned = []
+        seen = set()
         for line in lines:
             cleaned_line = re.sub(r"^([\-*\u2022•]|\d+[.)]|[a-zA-Z][.)])\s+", "", line).strip()
+            cleaned_line = self._dedupe_experience_phrase(cleaned_line)
             if cleaned_line:
-                cleaned.append(cleaned_line)
+                key = cleaned_line.lower()
+                if key not in seen:
+                    seen.add(key)
+                    cleaned.append(cleaned_line)
 
         return cleaned
+
+    def _dedupe_experience_phrase(self, text: str) -> str:
+        """Remove duplicate experience phrases like repeated '10+ years' in one line."""
+        if not text:
+            return ""
+        pattern = re.compile(r"(?i)(\b\d+(?:\.\d+)?\s*\+?\s*years?\b|\b\d+\s*\+\s*years?\b)")
+        matches = list(pattern.finditer(text))
+        if len(matches) <= 1:
+            return text.strip()
+
+        first = matches[0]
+        keep_parts = [text[:first.end()]]
+        cursor = first.end()
+        for m in matches[1:]:
+            keep_parts.append(text[cursor:m.start()])
+            cursor = m.end()
+        keep_parts.append(text[cursor:])
+        compact = "".join(keep_parts)
+        compact = re.sub(r"\s{2,}", " ", compact)
+        compact = re.sub(r"\s+,", ",", compact)
+        return compact.strip()
+
+    def _build_project_duration(self, project: Dict[str, Any]) -> str:
+        start = project.get("durationFrom") or project.get("startDate") or ""
+        end = project.get("durationTo") or project.get("endDate") or ""
+        if project.get("isCurrentProject") and not end:
+            end = "Present"
+        if start or end:
+            return f"{str(start).strip()} - {str(end).strip()}".strip(" -")
+        return ""
 
     def _render_fallback(self, context: Dict[str, Any]) -> bytes:
         # Create a simple text-based document representation

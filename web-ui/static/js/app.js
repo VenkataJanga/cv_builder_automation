@@ -3018,22 +3018,24 @@ class CVBuilderApp {
         if (profile) {
             const safeLocation = sanitizeLocation(profile.location);
             const safeCurrentTitle = sanitizeCurrentTitle(profile.current_title);
-            // Use target_role as the primary displayed role; fall back to current_title
+            // Measure 4: current_title (currentDesignation) is always the primary displayed role.
+            // target_role (careerObjective / desired role) is shown as a separate labelled field
+            // so the two are never confused in the UI.
             const targetRole = profile.target_role
                 || cvData.target_role
                 || cvData.summary?.target_role
                 || null;
-            const displayedRole = targetRole || safeCurrentTitle;
             const portalId = profile.portal_id || profile.employee_id || cvData.portal_id || cvData.employee_id || '';
             html += '<div class="cv-header">';
             if (profile.full_name) html += `<h1>${profile.full_name}</h1>`;
-            if (displayedRole) html += `<h2>${displayedRole}</h2>`;
+            // Primary heading is always the current role/designation, not the target role.
+            if (safeCurrentTitle) html += `<h2>${safeCurrentTitle}</h2>`;
             if (profile.current_organization) html += `<p><strong>Organization:</strong> ${profile.current_organization}</p>`;
             if (profile.total_experience) html += `<p><strong>Experience:</strong> ${profile.total_experience} years</p>`;
             if (profile.grade) html += `<p><strong>Current Grade:</strong> ${profile.grade}</p>`;
-            // Show current role only when it differs from the displayed target role
-            if (safeCurrentTitle && targetRole && safeCurrentTitle.toLowerCase() !== targetRole.toLowerCase()) {
-                html += `<p><strong>Current Role:</strong> ${safeCurrentTitle}</p>`;
+            // Target role shown as a clearly labelled separate line when present and different.
+            if (targetRole && targetRole.toLowerCase() !== (safeCurrentTitle || '').toLowerCase()) {
+                html += `<p><strong>Target Role:</strong> ${targetRole}</p>`;
             }
             if (portalId) html += `<p><strong>Portal ID:</strong> ${portalId}</p>`;
             if (profile.email) html += `<p><strong>Email:</strong> ${profile.email}</p>`;
@@ -3252,6 +3254,28 @@ class CVBuilderApp {
             domainExpertise.forEach(domain => html += `<li>${domain}</li>`);
             html += `</ul>`;
         }
+
+        const renderListSection = (title, values) => {
+            const normalized = normalizeList(values || []);
+            if (normalized.length > 0) {
+                html += `<h3>${title}</h3><ul>`;
+                normalized.forEach(item => html += `<li>${item}</li>`);
+                html += `</ul>`;
+            }
+        };
+
+        renderListSection('Development Tools', cvData.development_tools || cvData.skills?.development_tools);
+        renderListSection('CRM tools', cvData.crm_tools || cvData.skills?.crm_tools);
+        renderListSection('Database Connectivity', cvData.database_connectivity || cvData.skills?.database_connectivity);
+        renderListSection('SQL Skills', cvData.sql_skills || cvData.skills?.sql_skills);
+        renderListSection('ERP', cvData.erp || cvData.skills?.erp);
+        renderListSection('Legacy Systems', cvData.legacy_systems || cvData.skills?.legacy_systems);
+        renderListSection('Networking', cvData.networking || cvData.skills?.networking);
+        renderListSection('Testing Tools', cvData.testing_tools || cvData.skills?.testing_tools);
+        renderListSection('Documentation', cvData.documentation || cvData.skills?.documentation);
+        renderListSection('Configuration Management', cvData.configuration_management || cvData.skills?.configuration_management);
+        renderListSection('Client / Server Technologies', cvData.client_server_technologies || cvData.skills?.client_server_technologies);
+        renderListSection('Foreign Language known', cvData.foreign_language_known || cvData.skills?.foreign_language_known);
 
         // Certifications
         const certifications = normalizeList(

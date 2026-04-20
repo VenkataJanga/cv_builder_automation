@@ -190,7 +190,9 @@ class CanonicalDocumentParser:
         """Normalize text for parsing"""
         # Preserve line boundaries; section detection and entity extraction rely on them.
         text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-        text = text.replace("\x07", " ")
+        # DOC extractor uses 0x07 as a cell separator; keep this as line boundaries
+        # so tabular sections (experience/education/skills) remain parseable.
+        text = text.replace("\x07", "\n")
         text = re.sub(r'[^\x09\x0A\x0D\x20-\x7E]', ' ', text)
 
         cleaned_lines = []
@@ -525,27 +527,97 @@ class CanonicalDocumentParser:
         if not block:
             return []
 
-        compact = re.sub(r'\s+', ' ', block.replace('\x07', ' ')).strip()
-        compact = re.sub(r'(?i)^.*?joining\s+date\s+relieving\s+date\s*', '', compact)
-        date_pairs = list(re.finditer(r'(\d{2}-[A-Za-z]{3}-\d{4})\s+(Till\s+Date|\d{2}-[A-Za-z]{3}-\d{4})', compact, re.IGNORECASE))
-        if not date_pairs:
+        raw_lines = [line.strip(' ,;:-') for line in block.splitlines() if line.strip()]
+        header_noise = re.compile(
+            r'(?i)^(?:\(starting\s+from\s+the\s+current\s+employer\)|sl\.?\s*no\.?|'
+            r'name\s+of\s+the\s+organization|designation|joining\s+date|relieving\s+date)$'
+        )
+        lines = [line for line in raw_lines if not header_noise.match(line)]
+        if not lines:
             return []
 
+        date_pattern = re.compile(
+            r'^(?:\d{2}-[A-Za-z]{3}-\d{4}'
+            r'|[A-Za-z]{3,9}\s+\d{1,2}(?:st|nd|rd|th)?\s*,?\s*\d{4}'
+            r'|Till\s+Date)$',
+            re.IGNORECASE,
+        )
+
+        row_chunks: List[List[str]] = []
+        current_chunk: List[str] = []
+        for line in lines:
+            if re.match(r'^\d{1,2}$', line):
+                if current_chunk:
+                    row_chunks.append(current_chunk)
+                current_chunk = []
+                continue
+            current_chunk.append(line)
+        if current_chunk:
+            row_chunks.append(current_chunk)
+
+        if not row_chunks:
+            return []
+
+        designation_markers = [
+            "System Integration Sr. Analyst",
+            "Sr. Software Engineer",
+            "Software Engineer",
+            "ETL Developer",
+            "Senior Analyst",
+            "Analyst",
+            "Developer",
+            "Engineer",
+            "Consultant",
+            "Manager",
+        ]
+
         items = []
-        cursor = 0
-        for idx, match in enumerate(date_pairs):
-            prefix = compact[cursor:match.start()].strip(' ,;:-')
-            prefix = re.sub(r'^\d+\s+', '', prefix).strip()
-            if prefix:
-                items.append({
-                    "company": prefix,
-                    "title": "",
-                    "startDate": match.group(1).strip(),
-                    "endDate": match.group(2).strip(),
-                    "description": "",
-                    "responsibilities": [],
-                })
-            cursor = match.end()
+        for chunk in row_chunks:
+            row_values = [value.strip(' ,;:-') for value in chunk if value.strip(' ,;:-')]
+            if not row_values:
+                continue
+
+            date_indexes = [idx for idx, value in enumerate(row_values) if date_pattern.match(value)]
+            if len(date_indexes) < 2:
+                continue
+
+            start_idx, end_idx = date_indexes[0], date_indexes[1]
+            start_date = row_values[start_idx]
+            end_date = row_values[end_idx]
+            before_dates = row_values[:start_idx]
+            if not before_dates:
+                continue
+
+            before_text = " ".join(before_dates).strip(' ,;:-')
+
+            company = before_dates[0]
+            designation = ""
+
+            if len(before_dates) > 1:
+                designation = " ".join(before_dates[1:]).strip(' ,;:-')
+
+            split_parts = re.split(r'\s{2,}|\s+\|\s+|\s+-\s+', before_text)
+            split_parts = [p.strip(' ,;:-') for p in split_parts if p.strip(' ,;:-')]
+            if len(split_parts) >= 2:
+                company = split_parts[0]
+                designation = split_parts[1]
+            else:
+                lowered = before_text.lower()
+                for marker in designation_markers:
+                    marker_idx = lowered.rfind(marker.lower())
+                    if marker_idx > 0:
+                        company = before_text[:marker_idx].strip(' ,;:-')
+                        designation = before_text[marker_idx:].strip(' ,;:-')
+                        break
+
+            items.append({
+                "company": company,
+                "title": designation,
+                "startDate": start_date,
+                "endDate": end_date,
+                "description": "",
+                "responsibilities": [],
+            })
 
         return items
     
@@ -745,14 +817,14 @@ class CanonicalDocumentParser:
             compact = re.sub(r'\s+', ' ', source_text.replace('\x07', ' ')).strip()
             # Strip table header row before applying compact regex
             compact = re.sub(
-                r'(?i)(?:sl\.?\s*no\.?|s\.?\s*no\.?)\s+(?:degree|qualification)\s+\S[^0-9]{0,300}(?=\d+\s+(?:MBA|MCA|M\.?Tech|Bachelor|Master|PhD|B\.?E|B\.?Tech))',
+                r'(?i)(?:sl\.?\s*no\.?|s\.?\s*no\.?)\s+(?:degree|qualification)\s+\S[^0-9]{0,300}(?=\d+\s+(?:MBA|M\.?CA|MCA|M\.?Tech|Bachelor|Master|PhD|B\.?E|B\.?Tech|B\.?Sc|12th|10th|S\.?S\.?C|H\.?S\.?C|Intermediate))',
                 '',
                 compact,
             ).strip()
             degree_pattern = re.compile(
-                r"(?i)(MBA|M\.?Tech|MCA|PhD|Doctorate|Master\s+of\s+[A-Za-z ]+|Bachelor\s+of\s+[A-Za-z ]+|B\.?E\.?|B\.?Tech)"
+                r"(?i)(MBA|M\.?Tech|M\.?CA|MCA|PhD|Doctorate|Master\s+of\s+[A-Za-z ]+|Bachelor\s+of\s+[A-Za-z ]+|B\.?E\.?|B\.?Tech|B\.?Sc|12th|10th|S\.?S\.?C|H\.?S\.?C|Intermediate)"
                 r"\s+(.+?)\s+(19\d{2}|20[0-3]\d)\s+(.+?)"
-                r"(?=(?:\bMBA\b|\bMaster\s+of\b|\bBachelor\s+of\b|\bB\.?E\.?\b|\bB\.?Tech\b|\bM\.?Tech\b|\bMCA\b|\bPhD\b|\bDoctorate\b|$))"
+                r"(?=(?:\bMBA\b|\bMaster\s+of\b|\bBachelor\s+of\b|\bB\.?E\.?\b|\bB\.?Tech\b|\bB\.?Sc\b|\bM\.?Tech\b|\bM\.?CA\b|\bMCA\b|\bPhD\b|\bDoctorate\b|\b12th\b|\b10th\b|\bS\.?S\.?C\b|\bH\.?S\.?C\b|\bIntermediate\b|$))"
             )
             for match in degree_pattern.finditer(compact):
                 degree = match.group(1).strip()
@@ -806,6 +878,10 @@ class CanonicalDocumentParser:
                     degree = "10th Standard"
                 else:
                     degree = specialization_text
+            elif re.search(r'(?i)^(12th|intermediate|h\.?s\.?c)$', str(degree).strip()):
+                degree = "12th Standard"
+            elif re.search(r'(?i)^(10th|s\.?s\.?c)$', str(degree).strip()):
+                degree = "10th Standard"
 
             year = self._extract_year(specialization_text)
             board = None
@@ -844,10 +920,10 @@ class CanonicalDocumentParser:
         # Used to find row boundaries — must not include trailing [A-Za-z ]* so the branch
         # stays separate from the core degree name.
         _DEGREE_BOUNDARY = (
-            r"MBA|MCA|M\.?Tech|PhD|Doctorate"
+            r"MBA|M\.?CA|MCA|M\.?Tech|PhD|Doctorate"
             r"|Master\s+of\s+(?:Business|Science|Engineering|Arts|Technology|Computer|Management)"
             r"|Bachelor\s+of\s+(?:Engineering|Science|Technology|Arts|Commerce|Computer)"
-            r"|B\.?E\.|B\.?Tech|B\.?Sc|B\.?Com"
+            r"|B\.?E\.|B\.?Tech|B\.?Sc|B\.?Com|12th|10th|S\.?S\.?C|H\.?S\.?C|Intermediate"
         )
         # Flatten whitespace for uniform matching
         compact = re.sub(r'\s+', ' ', text.replace('\x07', ' ')).strip()
@@ -867,7 +943,7 @@ class CanonicalDocumentParser:
         )
         # Strip table header row (everything up to first row-number + degree keyword)
         compact = re.sub(
-            r'^.{0,400}?(?=\b\d+\s+(?:MBA|MCA|M\.?Tech|PhD|Doctorate|Bachelor|Master|B\.E|B\.Tech|B\.Sc))',
+            r'^.{0,400}?(?=\b\d+\s+(?:MBA|M\.?CA|MCA|M\.?Tech|PhD|Doctorate|Bachelor|Master|B\.E|B\.Tech|B\.Sc|12th|10th|S\.?S\.?C|H\.?S\.?C|Intermediate))',
             '',
             compact,
             flags=re.IGNORECASE,
@@ -1002,7 +1078,7 @@ class CanonicalDocumentParser:
         degree_patterns = [
             r'\b(Bachelor\s+of\s+[A-Za-z ]+)\b',
             r'\b(Master\s+of\s+[A-Za-z ]+)\b',
-            r'\b(B\.?E\.?|B\.?Tech|M\.?Tech|MBA|MCA|PhD|Doctorate|B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?)\b',
+            r'\b(B\.?E\.?|B\.?Tech|B\.?Sc|M\.?Tech|MBA|M\.?CA|MCA|PhD|Doctorate|B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?|12th|10th|S\.?S\.?C|H\.?S\.?C|Intermediate)\b',
             r'\b(Bachelor\'?s?|Master\'?s?)\b',
         ]
         
@@ -1074,6 +1150,18 @@ class CanonicalDocumentParser:
             "operatingSystems": [],
             "databases": [],
             "domainExperience": [],
+            "developmentTools": [],
+            "crmTools": [],
+            "databaseConnectivity": [],
+            "sqlSkills": [],
+            "erp": [],
+            "legacySystems": [],
+            "networking": [],
+            "testingTools": [],
+            "documentation": [],
+            "configurationManagement": [],
+            "clientServerTechnologies": [],
+            "foreignLanguageKnown": [],
         }
 
         source_text = skills_text or self._slice_text_between_markers(
@@ -1095,12 +1183,23 @@ class CanonicalDocumentParser:
             ("Primary Skills", "primarySkills"),
             ("Operating Systems", "operatingSystems"),
             ("Languages", "technicalSkills"),
-            ("Development Tools", "toolsAndPlatforms"),
+            ("Development Tools", "developmentTools"),
+            ("CRM tools", "crmTools"),
+            ("Database Connectivity", "databaseConnectivity"),
             ("Middleware", "toolsAndPlatforms"),
             ("Scripts", "technicalSkills"),
             ("Databases", "databases"),
+            ("SQL Skills", "sqlSkills"),
             ("Domain Knowledge", "domainExperience"),
+            ("ERP", "erp"),
+            ("Legacy Systems", "legacySystems"),
+            ("Networking", "networking"),
+            ("Testing Tools", "testingTools"),
+            ("Documentation", "documentation"),
+            ("Configuration Management", "configurationManagement"),
+            ("Client / Server Technologies", "clientServerTechnologies"),
             ("Foreign Language known", "technicalSkills"),
+            ("Foreign Language known", "foreignLanguageKnown"),
         ]
 
         keys_regex = "|".join(re.escape(label) for label, _ in labels)
@@ -1155,6 +1254,35 @@ class CanonicalDocumentParser:
         result["operatingSystems"] = cleanup_values(result.get("operatingSystems", []))
         result["databases"] = cleanup_values(result.get("databases", []))
         result["domainExperience"] = cleanup_values(result.get("domainExperience", []))
+        result["developmentTools"] = cleanup_values(result.get("developmentTools", []))
+        result["crmTools"] = cleanup_values(result.get("crmTools", []))
+        result["databaseConnectivity"] = cleanup_values(result.get("databaseConnectivity", []))
+        result["sqlSkills"] = cleanup_values(result.get("sqlSkills", []))
+        result["erp"] = cleanup_values(result.get("erp", []))
+        result["legacySystems"] = cleanup_values(result.get("legacySystems", []))
+        result["networking"] = cleanup_values(result.get("networking", []))
+        result["testingTools"] = cleanup_values(result.get("testingTools", []))
+        result["documentation"] = cleanup_values(result.get("documentation", []))
+        result["configurationManagement"] = cleanup_values(result.get("configurationManagement", []))
+        result["clientServerTechnologies"] = cleanup_values(result.get("clientServerTechnologies", []))
+        result["foreignLanguageKnown"] = cleanup_values(result.get("foreignLanguageKnown", []))
+
+        for category_key in [
+            "developmentTools",
+            "crmTools",
+            "databaseConnectivity",
+            "sqlSkills",
+            "erp",
+            "legacySystems",
+            "networking",
+            "testingTools",
+            "documentation",
+            "configurationManagement",
+            "clientServerTechnologies",
+        ]:
+            for item in result.get(category_key, []):
+                if item and item not in result["toolsAndPlatforms"]:
+                    result["toolsAndPlatforms"].append(item)
 
         # Keep domain list normalized.
         result["domainExperience"] = [item for item in result.get("domainExperience", []) if item and item.lower() not in {"none", "na", "n/a"}]

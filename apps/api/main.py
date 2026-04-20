@@ -18,6 +18,7 @@ from src.interfaces.rest.routers.cv_router import router as cv_router
 from src.interfaces.rest.routers.export_router import router as export_router
 from src.interfaces.rest.routers.preview_router import router as preview_router
 from src.interfaces.rest.routers.questionnaire_router import router as questionnaire_router
+from src.interfaces.rest.routers.quality_router import router as quality_router
 from src.interfaces.rest.routers.retrieval_router import router as retrieval_router
 from src.interfaces.rest.routers.review_router import router as review_router
 from src.interfaces.rest.routers.session_router import router as session_router
@@ -106,6 +107,7 @@ app.include_router(validation_router)
 app.include_router(retrieval_router)
 app.include_router(speech_router)
 app.include_router(questionnaire_router)
+app.include_router(quality_router)
 app.include_router(template_router)
 app.include_router(review_router)
 

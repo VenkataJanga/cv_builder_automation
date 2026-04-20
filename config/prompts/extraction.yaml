@@ -34,7 +34,7 @@ normalization_and_extraction:
         }},
         "summary": {{
           "professional_summary": "string or null",
-          "target_role": "string or null",
+          "target_role": "The role the candidate WANTS or is actively applying for (future/desired role). Do NOT set this to their current title or current designation. If no desired or target role is explicitly mentioned, set to null.",
           "key_highlights": ["list of 3-5 highlights or empty"]
         }},
         "skills": {{

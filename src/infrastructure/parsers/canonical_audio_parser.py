@@ -700,25 +700,52 @@ class CanonicalAudioParser:
         return self._extract_summary_from_lead_paragraph(text)
     
     def _extract_current_role(self, text: str) -> Optional[str]:
-        """Extract current role/title - handles 'Role at Organization' pattern"""
+        """Extract current role/title.
+
+        Measure 2: Extended to match two-word titles such as 'Tech Lead', 'Product Manager',
+        'Delivery Head' where the second word alone is a role-type keyword (the previous
+        regex required a full Software-Engineer-style pattern and missed these cases).
+        """
+        # Seniority/modifier words
+        _SENIORITY = r'(?:Senior|Sr\.?|Junior|Jr\.?|Lead|Principal|Staff|Chief|Head|Associate|Assistant)?'
+        # Role-type endings — expanded to include standalone Lead/Head/Manager/Director etc.
+        _ROLE_TYPE = (
+            r'(?:Software\s+)?(?:Developer|Engineer|Architect|Consultant|Advisor|Analyst|'
+            r'Manager|Specialist|Director|Strategist|Lead|Head|Owner|Designer|'
+            r'Technologist|Programmer|Administrator|Admin|Coordinator|Supervisor|'
+            r'Executive|Officer|President|VP|Scrum\s+Master|Product\s+Owner)'
+        )
+        # Two-word standalone titles not captured by the generic pattern
+        _STANDALONE_TITLES = (
+            r'(?:Tech\s+Lead|Technical\s+Lead|Team\s+Lead|Delivery\s+Head|Product\s+Manager|'
+            r'Project\s+Manager|Program\s+Manager|Engagement\s+Manager|Account\s+Manager|'
+            r'Practice\s+Head|Competency\s+Head|Solution\s+Architect|Data\s+Scientist|'
+            r'Data\s+Engineer|ML\s+Engineer|AI\s+Engineer|DevOps\s+Engineer|'
+            r'Cloud\s+Architect|Enterprise\s+Architect|Security\s+Architect)'
+        )
+
         role_patterns = [
             r'(?:currently\s+serving\s+as\s+(?:a\s+)?)\s*([^,\.\n]{5,60})(?=\s+at|\.|,|$)',
             r'(?:Current\s+Role[:\s]+)([^,\n]+?)(?:\s+at\s+)',
             r'(?:working\s+at\s+\w+\s+as\s+a?)\s+([^,\.\n]{5,60})',
             r'(?:I\'m\s+a|I\s+am\s+a|currently\s+working\s+as\s+a?)\s+([^,\.\n]{5,60})',
-            r'((?:[A-Z][a-z]+\s+){0,3}(?:System\s+)?(?:Senior|Junior|Lead|Principal|Staff|Chief|Head)?\s*(?:Software\s+)?(?:Developer|Engineer|Architect|Consultant|Advisor|Analyst|Manager|Specialist|Director|Strategist))',
+            # Standalone two-word title with contextual trigger
+            r'(?:as\s+a?|role\s+is|designation\s+is|position\s+is)\s+(' + _STANDALONE_TITLES + r')',
+            # Generic seniority + role-type
+            r'(' + _SENIORITY + r'\s*(?:[A-Z][a-z]+\s+){0,3}' + _ROLE_TYPE + r')',
             r'(?:as\s+a?)\s+([A-Z][A-Za-z\s]{5,60}?)(?=\s+at|\s+for|\.|,|$)',
+            # Bare standalone title at start of a labelled field
+            r'(?:Current\s+(?:Role|Designation|Title)\s*[:\-]\s*)(' + _STANDALONE_TITLES + r'|[^,\n]{3,60}?)(?=\s+at|,|\.|$)',
         ]
-        
+
         for pattern in role_patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 role = self._sanitize_current_role(match.group(1))
-                # Remove trailing "at" or other prepositions
                 role = re.sub(r'\s+(at|in|for)$', '', role, flags=re.IGNORECASE)
                 if len(role) > 3:
                     return role
-        
+
         return None
 
     def _sanitize_current_role(self, role: Optional[str]) -> str:
@@ -742,47 +769,87 @@ class CanonicalAudioParser:
 
         return cleaned
 
+    # Known industry/domain keywords used as an allowlist for domain extraction.
+    _KNOWN_DOMAINS = {
+        "healthcare", "health care", "insurance", "banking", "finance", "financial services",
+        "financial", "retail", "manufacturing", "energy", "telecom", "telecommunications",
+        "automotive", "ecommerce", "e-commerce", "education", "logistics", "pharma",
+        "pharmaceutical", "transportation", "supply chain", "hospitality", "media",
+        "government", "public sector", "utilities", "real estate", "aviation",
+    }
+
     def _extract_domain_expertise(self, text: str) -> List[str]:
-        """Extract domain/industry expertise from transcript sections."""
-        # Patterns that handle labeled markdown sections and conversational phrasing.
+        """
+        Extract domain/industry expertise from transcript.
+
+        Measure 1: Capture group is now bounded to stop at sentence-ending punctuation
+        or clause-start keywords (designing, architecting, leading, etc.) so that
+        technical responsibilities do not bleed into the domain list.
+
+        Two-stage approach:
+        1. Regex extracts the bounded raw domain text from labeled sections.
+        2. Token-level allowlist filter keeps only known domain/industry terms.
+        """
+        # Clause-start verbs that signal the end of a domain list inside a sentence.
+        _CLAUSE_STOP = (
+            r'(?=\s*(?:designing|architecting|building|leading|managing|driving|'
+            r'developing|implementing|delivering|focusing|mentoring|providing|'
+            r'working|supporting|handling|performing|ensuring|creating|'
+            r'enabling|orchestrating|deploying|migrating)\b)'
+        )
+
         domain_patterns = [
-            # Pattern 1: "**Domain Expertise**\nHealthcare, Banking" and "Domain Expertise: ..."
+            # Pattern 1: Labeled section "**Domain Expertise**\n..." or "Domain Expertise: ..."
+            # Stop at next bold heading or end of line.
             r'(?:\*\*)?domain\s+expertise(?:\*\*)?\s*[:\-]?\s*(?:\n\s*)?([^\n\*]+)',
-            # Pattern 1b: "Domain Details: Healthcare, Banking"
+            # Pattern 1b: "Domain Details: ..."
             r'(?:\*\*)?domain\s+details?(?:\*\*)?\s*[:\-]?\s*(?:\n\s*)?([^\n\*]+)',
-            # Pattern 2: "Domains worked in: Healthcare, Banking"
+            # Pattern 2: "Domains worked in: ..."
             r'domains?\s+(?:worked\s+in|include|are)\s*[:\-]?\s*([^\n\*]+)',
-            # Pattern 3: Conversational "its having healthcare, insurance, banking"
-            r'(?:as\s+per\s+my\s+profile[\s,]*)?(?:it(?:\'s|\s+is)?\s+having|its\s+having|having)\s+([^\n\*]+)',
+            # Pattern 3 (TIGHTENED): Conversational "I worked across ... including X, Y, Z"
+            # Stop at sentence-ending punctuation OR clause-start verbs.
+            r'(?:worked\s+across\s+(?:multiple\s+)?domains?\s+(?:including|such\s+as|like)\s*)'
+            r'((?:[A-Za-z][A-Za-z\s\-]*?)(?:,\s*(?:[A-Za-z][A-Za-z\s\-]*?))*)'
+            + _CLAUSE_STOP + r'|(?:[,\.;]|$)',
+            # Pattern 4: "its having / having domain expertise in X, Y"
+            r'(?:it(?:\'s|\s+is)?\s+having|its\s+having|having\s+domain\s+expertise\s+in)\s+'
+            r'((?:[A-Za-z][A-Za-z\s\-]*?)(?:,\s*(?:[A-Za-z][A-Za-z\s\-]*?))*)'
+            + _CLAUSE_STOP + r'|(?:[,\.;]|$)',
         ]
 
         extracted: List[str] = []
         for pattern in domain_patterns:
-            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+            match = re.search(pattern, text, re.IGNORECASE)
             if not match:
                 continue
 
-            raw_domains = re.sub(r'\s+', ' ', match.group(1)).strip(' .;:-*')
-            if not raw_domains:
+            raw = match.group(1) or ""
+            raw = re.sub(r'\s+', ' ', raw).strip(' .;:-*')
+            if not raw:
                 continue
-                
-            # Normalize conjunctions into delimiters for split
-            raw_domains = re.sub(r'\s+(?:and|&)\s+', ',', raw_domains, flags=re.IGNORECASE)
 
-            for token in re.split(r'[,;/|]', raw_domains):
+            # Normalise conjunctions into comma delimiters
+            raw = re.sub(r'\s+(?:and|&)\s+', ',', raw, flags=re.IGNORECASE)
+
+            for token in re.split(r'[,;/|]', raw):
                 item = token.strip(' .;:-*')
                 item = re.sub(r'^(?:domain\s+(?:details?|expertise)\s*[:\-]?\s*)', '', item, flags=re.IGNORECASE).strip(' .;:-')
                 item = re.sub(r'\s+domains?$', '', item, flags=re.IGNORECASE).strip(' .;:-')
-                # Remove trailing filler words
-                item = re.sub(r'\b(?:etc|etc\.|et\s+cetera)\b\s*$', '', item, flags=re.IGNORECASE).strip(' .;:-')
+                item = re.sub(r'\b(?:etc\.?|et\s+cetera)\b\s*$', '', item, flags=re.IGNORECASE).strip(' .;:-')
                 if len(item) < 3:
                     continue
-                # Filter out common section keywords or heading remnants.
-                if re.search(r'\b(project|education|certification|responsibilities|skills?|primary|secondary|domain\s+expertise|domain\s+details?|domain|domains)\b', item, re.IGNORECASE):
+                # Allowlist gate: keep only tokens that match a known domain keyword.
+                item_lower = item.lower()
+                matched_domain = next(
+                    (d for d in self._KNOWN_DOMAINS if d in item_lower or item_lower in d),
+                    None,
+                )
+                if matched_domain is None:
                     continue
-                normalized = item.title()
-                if normalized not in extracted:
-                    extracted.append(normalized)
+                # Use the canonical display form (title-case of the known domain).
+                display = matched_domain.title().replace("E-Commerce", "E-Commerce")
+                if display not in extracted:
+                    extracted.append(display)
 
             if extracted:
                 break

@@ -59,21 +59,21 @@ class PreviewService:
     
     def build_preview_from_canonical(self, canonical_data: Dict[str, Any]) -> dict:
         """
-        Build CV preview from Canonical CV Schema (Phase 4: Canonical-only)
-        
-        Args:
-            canonical_data: Dictionary containing canonical CV data
-            
-        Returns:
-            Formatted CV preview data
-            
-        Raises:
-            ValueError: If canonical_data is None or invalid
+        Build CV preview from Canonical CV Schema (Phase 4: Canonical-only).
+
+        Measure 5: Before converting, runs a field-level completeness gate that
+        checks critical sections (currentDesignation, experience.projects,
+        experience.domainExperience, education).  When a critical section is empty
+        but a richer version exists in sourceSnapshots, the richer version is
+        restored so the preview is never blank for fields that were once populated.
         """
         if not canonical_data:
             self.logger.error("Cannot build preview: canonical_data is None")
             raise ValueError("Canonical CV data is required for preview generation")
-        
+
+        # Measure 5: restore critical fields from sourceSnapshots when they are empty.
+        canonical_data = self._restore_critical_fields_from_snapshots(canonical_data)
+
         try:
             # Convert dict to CanonicalCVSchema if needed
             canonical_schema = None
@@ -106,23 +106,114 @@ class PreviewService:
                 f"education_count={len(self._get_value(preview_source, 'education') or [])} "
                 f"project_count={len(self._get_value(preview_source, 'experience', 'projects') or [])}"
             )
-            
+
             # Convert canonical schema to formatter-compatible format
             formatted_data = self._convert_canonical_to_formatter_format(preview_source)
-            
+
             # Generate preview using formatter
             preview = self.formatter.format_cv(formatted_data)
-            
+
             self.logger.info(
                 "Successfully generated CV preview from canonical schema: "
                 f"preview_keys={[k for k in preview.keys()] if isinstance(preview, dict) else 'unknown'} "
                 f"formatted_keys={[k for k in formatted_data.keys()]}"
             )
             return preview
-            
+
         except Exception as e:
             self.logger.error(f"Error building CV preview from canonical schema: {str(e)}", exc_info=True)
             raise
+
+    def _restore_critical_fields_from_snapshots(
+        self, canonical_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Measure 5: Field-level completeness gate.
+
+        For each critical section, if the live canonical value is empty but a
+        richer version is available in sourceSnapshots, restore it and log a warning.
+        This prevents a chat turn (which rebuilds canonical_cv from the thin
+        questionnaire) from producing a blank preview for fields that the audio or
+        document pipeline already populated.
+        """
+        if not isinstance(canonical_data, dict):
+            return canonical_data
+
+        from copy import deepcopy as _deepcopy
+        cv = _deepcopy(canonical_data)
+        snapshots = cv.get("sourceSnapshots") or {}
+
+        # Helper: get the richest snapshot value for a given key across all snapshot entries.
+        def _best_from_snapshots(snapshot_key: str, sub_key: Optional[str] = None):
+            """Return the first non-empty value found in any snapshot under snapshot_key."""
+            for _snap_name, snap_val in snapshots.items():
+                if not isinstance(snap_val, dict):
+                    continue
+                val = snap_val.get(snapshot_key)
+                if val is None:
+                    continue
+                if sub_key:
+                    val = val.get(sub_key) if isinstance(val, dict) else None
+                if val not in (None, "", [], {}):
+                    return val
+            return None
+
+        candidate = cv.setdefault("candidate", {})
+        experience = cv.setdefault("experience", {})
+
+        # 1. currentDesignation
+        if not (candidate.get("currentDesignation") or "").strip():
+            restored = _best_from_snapshots("candidate", "currentDesignation")
+            if restored:
+                candidate["currentDesignation"] = restored
+                self.logger.warning(
+                    "Measure5: restored candidate.currentDesignation from sourceSnapshots"
+                )
+
+        # 2. experience.projects
+        if not (experience.get("projects") or []):
+            # Check the audio_transcript snapshot for projects stored directly
+            for snap_name, snap_val in snapshots.items():
+                if not isinstance(snap_val, dict):
+                    continue
+                snap_exp = snap_val.get("experience") or {}
+                snap_projects = snap_exp.get("projects") or []
+                if snap_projects:
+                    experience["projects"] = snap_projects
+                    self.logger.warning(
+                        f"Measure5: restored experience.projects from sourceSnapshots[{snap_name!r}]"
+                    )
+                    break
+
+        # 3. experience.domainExperience
+        if not (experience.get("domainExperience") or []):
+            for snap_name, snap_val in snapshots.items():
+                if not isinstance(snap_val, dict):
+                    continue
+                snap_exp = snap_val.get("experience") or {}
+                snap_domains = snap_exp.get("domainExperience") or []
+                if snap_domains:
+                    experience["domainExperience"] = snap_domains
+                    self.logger.warning(
+                        f"Measure5: restored experience.domainExperience from sourceSnapshots[{snap_name!r}]"
+                    )
+                    break
+
+        # 4. education
+        if not (cv.get("education") or []):
+            for snap_name, snap_val in snapshots.items():
+                if not isinstance(snap_val, dict):
+                    continue
+                snap_edu = snap_val.get("education") or []
+                if snap_edu:
+                    cv["education"] = snap_edu
+                    self.logger.warning(
+                        f"Measure5: restored education from sourceSnapshots[{snap_name!r}]"
+                    )
+                    break
+
+        cv["experience"] = experience
+        return cv
     
     def build_preview_from_staging(
         self, 
@@ -182,6 +273,7 @@ class PreviewService:
             skills = self._to_dict(canonical_dict.get("skills", {}))
             experience = self._to_dict(canonical_dict.get("experience", {}))
             personal_details = self._to_dict(canonical_dict.get("personalDetails", {}))
+            skills_catalog = self._to_dict((canonical_dict.get("unmappedData") or {}).get("skillsCatalog", {}))
 
             def candidate_field(*keys):
                 for key in keys:
@@ -274,6 +366,18 @@ class PreviewService:
                     "secondary_skills": skills.get("secondarySkills", []),
                     "tools_and_platforms": skills.get("toolsAndPlatforms", []),
                     "domain_expertise": domain_expertise,
+                    "development_tools": self._to_list(skills_catalog.get("developmentTools")),
+                    "crm_tools": self._to_list(skills_catalog.get("crmTools")),
+                    "database_connectivity": self._to_list(skills_catalog.get("databaseConnectivity")),
+                    "sql_skills": self._to_list(skills_catalog.get("sqlSkills")),
+                    "erp": self._to_list(skills_catalog.get("erp")),
+                    "legacy_systems": self._to_list(skills_catalog.get("legacySystems")),
+                    "networking": self._to_list(skills_catalog.get("networking")),
+                    "testing_tools": self._to_list(skills_catalog.get("testingTools")),
+                    "documentation": self._to_list(skills_catalog.get("documentation")),
+                    "configuration_management": self._to_list(skills_catalog.get("configurationManagement")),
+                    "client_server_technologies": self._to_list(skills_catalog.get("clientServerTechnologies")),
+                    "foreign_language_known": self._to_list(skills_catalog.get("foreignLanguageKnown")),
                 },
                 "tools_and_platforms": skills.get("toolsAndPlatforms", []),
                 "ai_frameworks": skills.get("aiToolsAndFrameworks", []),
@@ -281,6 +385,18 @@ class PreviewService:
                 "operating_systems": skills.get("operatingSystems", []),
                 "databases": skills.get("databases", []),
                 "domain_expertise": domain_expertise,
+                "development_tools": self._to_list(skills_catalog.get("developmentTools")),
+                "crm_tools": self._to_list(skills_catalog.get("crmTools")),
+                "database_connectivity": self._to_list(skills_catalog.get("databaseConnectivity")),
+                "sql_skills": self._to_list(skills_catalog.get("sqlSkills")),
+                "erp": self._to_list(skills_catalog.get("erp")),
+                "legacy_systems": self._to_list(skills_catalog.get("legacySystems")),
+                "networking": self._to_list(skills_catalog.get("networking")),
+                "testing_tools": self._to_list(skills_catalog.get("testingTools")),
+                "documentation": self._to_list(skills_catalog.get("documentation")),
+                "configuration_management": self._to_list(skills_catalog.get("configurationManagement")),
+                "client_server_technologies": self._to_list(skills_catalog.get("clientServerTechnologies")),
+                "foreign_language_known": self._to_list(skills_catalog.get("foreignLanguageKnown")),
                 "secondary_skills": skills.get("secondarySkills", []),
                 "employment": {
                     "current_employer": candidate_field("currentOrganization", "current_organization", "organization") or "",
@@ -291,7 +407,7 @@ class PreviewService:
                 "work_experience": self._convert_work_history_to_formatter_format(experience.get("workHistory", [])),
                 "certifications": self._convert_certifications_to_formatter_format(canonical_dict.get("certifications", [])),
                 "achievements": self._convert_achievements_to_formatter_format(canonical_dict.get("achievements", [])),
-                "languages": self._to_list(personal_details.get("languagesKnown")),
+                "languages": self._to_list(personal_details.get("languagesKnown") or canonical_dict.get("languages")),
                 "schema_version": canonical_dict.get("schema_version", "") or canonical_dict.get("schemaVersion", ""),
                 "target_role": candidate_field("careerObjective", "career_objective", "targetRole") or "",
             }
@@ -300,7 +416,7 @@ class PreviewService:
             role_details: dict[str, Any] = {}
             if isinstance(unmapped_data, dict):
                 for section_name, section_value in unmapped_data.items():
-                    if section_name == "unmapped_answers":
+                    if section_name in {"unmapped_answers", "attributes", "skillsCatalog"}:
                         continue
 
                     if isinstance(section_value, dict):
@@ -314,6 +430,11 @@ class PreviewService:
 
             if role_details:
                 formatted_data["leadership"] = role_details
+
+            # Surface structured Others contract for UI review panels.
+            attributes = unmapped_data.get("attributes") if isinstance(unmapped_data, dict) else []
+            if isinstance(attributes, list) and attributes:
+                formatted_data["unmapped_attributes"] = attributes
 
             return formatted_data
 

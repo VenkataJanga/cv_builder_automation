@@ -67,8 +67,10 @@ def _validate_export_eligibility(session: dict, session_id: str):
     
     Raises HTTPException if not eligible.
     """
-    # Check canonical_cv exists
-    canonical_cv = session.get("canonical_cv")
+    # Prefer resolved_canonical (frozen at Save & Validate) so every export uses the
+    # same audited snapshot the user reviewed.  Fall back to live canonical_cv for
+    # sessions that pre-date the staging layer or haven't gone through Save & Validate.
+    canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
     if not canonical_cv:
         raise HTTPException(
             status_code=400,
@@ -160,8 +162,8 @@ def export_docx_get(session_id: str, template_style: str = "standard"):
         # Validate export eligibility (human-in-the-loop gate)
         _validate_export_eligibility(session, session_id)
 
-        # Phase 4: Read from canonical_cv only
-        canonical_cv = session.get("canonical_cv")
+        # Read from resolved_canonical (Save & Validate snapshot) or live canonical_cv
+        canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
         if not canonical_cv:
             raise HTTPException(
                 status_code=400,
@@ -290,7 +292,7 @@ def export_doc_get(session_id: str, template_style: str = "standard"):
             return session
 
         _validate_export_eligibility(session, session_id)
-        canonical_cv = session.get("canonical_cv")
+        canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
         if not canonical_cv:
             raise HTTPException(
                 status_code=400,
@@ -377,9 +379,9 @@ def export_docx_post(request: ExportRequest):
         
         # Validate export eligibility (human-in-the-loop gate)
         _validate_export_eligibility(session, request.session_id)
-        
-        # Phase 4: Read from canonical_cv only
-        canonical_cv = session.get("canonical_cv")
+
+        # Read from resolved_canonical (Save & Validate snapshot) or live canonical_cv
+        canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
         if not canonical_cv:
             raise HTTPException(
                 status_code=400,
@@ -453,7 +455,7 @@ def export_doc_post(request: ExportRequest):
             return session
 
         _validate_export_eligibility(session, request.session_id)
-        canonical_cv = session.get("canonical_cv")
+        canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
         if not canonical_cv:
             raise HTTPException(
                 status_code=400,
@@ -531,9 +533,9 @@ def export_pdf_post(request: ExportRequest):
         
         # Validate export eligibility (human-in-the-loop gate)
         _validate_export_eligibility(session, request.session_id)
-        
-        # Phase 4: Read from canonical_cv only
-        canonical_cv = session.get("canonical_cv")
+
+        # Read from resolved_canonical (Save & Validate snapshot) or live canonical_cv
+        canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
         if not canonical_cv:
             raise HTTPException(
                 status_code=400,

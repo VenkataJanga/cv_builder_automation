@@ -77,6 +77,51 @@ def test_apply_others_mapping_coerces_skill_lists_and_skips_invalid_roots():
     assert canonical_cv["skills"]["primarySkills"] == ["Python", "FastAPI", "SQL"]
 
 
+def test_apply_others_mapping_marks_structured_attribute_as_reviewed():
+    canonical_cv = {
+        "candidate": {},
+        "skills": {},
+        "experience": {},
+        "education": [],
+        "certifications": [],
+        "personalDetails": {},
+        "audit": {"manualEdits": []},
+        "unmappedData": {
+            "attributes": [
+                {
+                    "attributeId": "attr-001",
+                    "source": "document_upload",
+                    "sourceSection": "top_level_fields",
+                    "sourcePath": "top_level_fields.portal_id",
+                    "originalLabel": "portal_id",
+                    "extractedValue": "77777",
+                    "mappingStatus": "unmapped",
+                    "reviewStatus": "pending",
+                }
+            ]
+        },
+    }
+
+    mappings = [
+        {
+            "attribute_id": "attr-001",
+            "source": "document_upload",
+            "sourceSection": "top_level_fields",
+            "key": "portal_id",
+            "target_path": "candidate.portalId",
+            "value": "77777",
+        }
+    ]
+
+    result = _apply_others_mappings(canonical_cv, mappings)
+
+    assert result["applied"] == 1
+    assert canonical_cv["candidate"]["portalId"] == "77777"
+    attr = canonical_cv["unmappedData"]["attributes"][0]
+    assert attr["mappingStatus"] == "mapped"
+    assert attr["reviewStatus"] == "reviewed"
+
+
 def test_review_merge_preserves_existing_education_details_when_form_is_sparse():
     existing_canonical = {
         "candidate": {},
@@ -158,3 +203,29 @@ def test_review_merge_preserves_existing_project_description_when_not_edited():
     assert projects[0]["projectDescription"] == "Long extracted description from upload"
     assert projects[0]["responsibilities"] == ["Built APIs"]
     assert projects[0]["toolsUsed"] == ["Python", "FastAPI"]
+
+
+def test_review_merge_keeps_header_location_when_personal_details_location_is_empty():
+    existing_canonical = {
+        "candidate": {},
+        "skills": {},
+        "experience": {"projects": [], "workHistory": []},
+        "education": [],
+    }
+    cv_data = {
+        "header": {
+            "location": "Chennai, India",
+        },
+        "personal_details": {
+            "location": "",
+        },
+        "summary": {},
+        "skills": {},
+    }
+
+    merged = _merge_preview_into_canonical(cv_data, existing_canonical)
+    current_location = (merged.get("candidate") or {}).get("currentLocation") or {}
+
+    assert current_location.get("fullAddress") == "Chennai, India"
+    assert current_location.get("city") == "Chennai"
+    assert current_location.get("country") == "India"

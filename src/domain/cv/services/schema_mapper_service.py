@@ -273,6 +273,38 @@ class SchemaMapperService:
             self._map_list_field(source_data, skills, "skills.frameworks", "frameworks")
             self._map_list_field(source_data, skills, "skills.libraries", "libraries")
             self._map_list_field(source_data, skills, "skills.aiToolsAndFrameworks", "aiToolsAndFrameworks")
+
+            # Preserve source-specific technical buckets for rich preview rendering.
+            # These are not canonical schema fields, so they are stored under unmappedData.
+            source_skills = source_data.get("skills") if isinstance(source_data.get("skills"), dict) else {}
+            extended_keys = [
+                "developmentTools",
+                "crmTools",
+                "databaseConnectivity",
+                "sqlSkills",
+                "erp",
+                "legacySystems",
+                "networking",
+                "testingTools",
+                "documentation",
+                "configurationManagement",
+                "clientServerTechnologies",
+                "foreignLanguageKnown",
+            ]
+            skills_catalog = {}
+            for key in extended_keys:
+                raw_val = source_skills.get(key)
+                if not raw_val:
+                    continue
+                if isinstance(raw_val, list):
+                    cleaned = [str(v).strip() for v in raw_val if str(v).strip()]
+                else:
+                    cleaned = [str(raw_val).strip()] if str(raw_val).strip() else []
+                if cleaned:
+                    skills_catalog[key] = cleaned
+
+            if skills_catalog:
+                canonical_cv.setdefault("unmappedData", {})["skillsCatalog"] = skills_catalog
             
             self.logger.debug("Skills section mapped successfully")
             
@@ -295,12 +327,13 @@ class SchemaMapperService:
                 work_history = []
                 for job in source_data["experience"]:
                     if isinstance(job, dict):
+                        end_value = str(job.get("endDate", "") or "").lower().strip()
                         work_entry = {
                             "organization": job.get("company", ""),
                             "designation": job.get("title", ""),
                             "employmentStartDate": job.get("startDate", ""),
                             "employmentEndDate": job.get("endDate", ""),
-                            "isCurrentCompany": str(job.get("endDate", "") or "").lower() in ["present", "current"],
+                            "isCurrentCompany": end_value in ["present", "current", "till date", "till-date", "to date"],
                             "location": "",
                             "responsibilities": job.get("responsibilities", []),
                             "achievements": [],
@@ -570,6 +603,12 @@ class SchemaMapperService:
             
             # Languages
             self._map_list_field(source_data, personal_details, "personalDetails.languagesKnown", "languagesKnown")
+            if not personal_details.get("languagesKnown") and source_data.get("languages"):
+                src_languages = source_data.get("languages")
+                if isinstance(src_languages, list):
+                    personal_details["languagesKnown"] = [str(v).strip() for v in src_languages if str(v).strip()]
+                elif isinstance(src_languages, str) and src_languages.strip():
+                    personal_details["languagesKnown"] = [src_languages.strip()]
             
             # Other personal fields
             for source_key, target_key in [

@@ -250,6 +250,33 @@ class AttachmentsMetadataModel(BaseModel):
 
 
 # ============================================================================
+# UNMAPPED / OTHERS CONTRACT
+# ============================================================================
+
+class UnmappedAttributeModel(BaseModel):
+    """Structured fallback record for attributes not mapped to canonical fields."""
+
+    attributeId: Optional[str] = Field(default="", description="Unique identifier for this unmapped attribute record")
+    originalLabel: Optional[str] = Field(default="", description="Original label as seen in source content")
+    normalizedLabel: Optional[str] = Field(default="", description="Normalized label for grouping and analytics")
+    extractedValue: Any = Field(default=None, description="Extracted value retained without loss")
+    valueType: Optional[str] = Field(default="", description="string|number|integer|boolean|array|object")
+
+    source: Optional[str] = Field(default="", description="Pipeline/source identifier")
+    sourceSection: Optional[str] = Field(default="", description="Source section heading or bucket")
+    sourcePath: Optional[str] = Field(default="", description="Path within source payload where value was found")
+
+    confidence: Optional[float] = Field(default=None, description="Optional extraction or mapping confidence")
+    mappingStatus: Optional[str] = Field(default="unmapped", description="unmapped|low_confidence|ambiguous|deferred")
+
+    firstSeenAt: Optional[str] = Field(default="", description="First capture timestamp (ISO8601)")
+    lastSeenAt: Optional[str] = Field(default="", description="Last capture timestamp (ISO8601)")
+    occurrenceCount: int = Field(default=1, description="How many times this value/label pattern has appeared")
+    promotionCandidate: bool = Field(default=False, description="Flag for schema-evolution review")
+    reviewStatus: Optional[str] = Field(default="pending", description="pending|reviewed|promoted|rejected")
+
+
+# ============================================================================
 # AUDIT TRAIL
 # ============================================================================
 
@@ -324,7 +351,11 @@ class CanonicalCVSchema(BaseModel):
     # Data-loss prevention extensions
     unmappedData: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Source-scoped unmapped details that could not be mapped to canonical fields",
+        description=(
+            "Source-scoped unmapped details that could not be mapped to canonical fields. "
+            "Recommended contract: unmappedData.attributes[] as structured Others records "
+            "(see UnmappedAttributeModel), while preserving legacy source buckets for backward compatibility."
+        ),
     )
     sourceSnapshots: Dict[str, Any] = Field(
         default_factory=dict,

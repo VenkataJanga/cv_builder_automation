@@ -107,7 +107,14 @@ def _merge_preview_into_canonical(cv_data: Dict[str, Any], existing_canonical: D
             candidate["totalExperienceYears"] = int(round(float(personal["total_experience"])))
         except (ValueError, TypeError):
             pass
-    loc = personal.get("location")
+    # Keep non-empty location when one source sends blank value.
+    loc = personal_details.get("location")
+    if loc in [None, "", {}]:
+        loc = personal_details.get("current_location")
+    if loc in [None, "", {}]:
+        loc = header_data.get("location")
+    if loc in [None, "", {}]:
+        loc = header_data.get("current_location")
     if loc:
         if isinstance(loc, str):
             loc_obj: Dict[str, str] = {"fullAddress": loc}
@@ -476,6 +483,42 @@ def _remove_unmapped_entry(canonical_cv: Dict[str, Any], source: str, key: str) 
         unmapped.pop(source, None)
 
 
+def _mark_structured_unmapped_mapped(canonical_cv: Dict[str, Any], mapping: Dict[str, Any]) -> None:
+    unmapped = canonical_cv.get("unmappedData")
+    if not isinstance(unmapped, dict):
+        return
+
+    attributes = unmapped.get("attributes")
+    if not isinstance(attributes, list):
+        return
+
+    attribute_id = str(mapping.get("attribute_id") or mapping.get("attributeId") or "").strip()
+    source = str(mapping.get("source") or "").strip()
+    key = str(mapping.get("key") or "").strip()
+    source_path = str(mapping.get("source_path") or mapping.get("sourcePath") or "").strip()
+    label = str(mapping.get("label") or mapping.get("original_label") or mapping.get("originalLabel") or "").strip()
+
+    for item in attributes:
+        if not isinstance(item, dict):
+            continue
+
+        if attribute_id and str(item.get("attributeId") or "").strip() != attribute_id:
+            continue
+
+        if not attribute_id:
+            source_match = not source or str(item.get("source") or "").strip() == source
+            path_match = not source_path or str(item.get("sourcePath") or "").strip() == source_path
+            key_match = not key or str(item.get("sourceSection") or "").strip() == key
+            label_match = not label or str(item.get("originalLabel") or "").strip() == label
+            if not (source_match and (path_match or key_match or label_match)):
+                continue
+
+        item["mappingStatus"] = "mapped"
+        item["reviewStatus"] = "reviewed"
+        item["lastSeenAt"] = datetime.now().isoformat()
+        break
+
+
 def _apply_others_mappings(canonical_cv: Dict[str, Any], mappings: List[Dict[str, Any]]) -> Dict[str, int]:
     allowed_roots = {
         "candidate",
@@ -498,7 +541,7 @@ def _apply_others_mappings(canonical_cv: Dict[str, Any], mappings: List[Dict[str
         target_path = str(mapping.get("target_path") or "").strip()
         raw_value = mapping.get("value")
         source = str(mapping.get("source") or "")
-        key = str(mapping.get("key") or "")
+        key = str(mapping.get("key") or mapping.get("sourceSection") or "")
 
         if not target_path or not raw_value:
             skipped += 1
@@ -526,6 +569,8 @@ def _apply_others_mappings(canonical_cv: Dict[str, Any], mappings: List[Dict[str
 
         if source and key:
             _remove_unmapped_entry(canonical_cv, source, key)
+
+        _mark_structured_unmapped_mapped(canonical_cv, mapping)
 
         applied += 1
 
@@ -578,13 +623,15 @@ def get_cv(session_id: str):
     if "error" in session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
-    canonical_cv = session.get("canonical_cv")
+    # Prefer resolved_canonical (frozen at Save & Validate) for edit reads; fall back
+    # to live canonical_cv for sessions that have not yet gone through Save & Validate.
+    canonical_cv = session.get("resolved_canonical") or session.get("canonical_cv")
     if not canonical_cv:
         raise HTTPException(
             status_code=400,
             detail="No canonical CV data found in session. Please complete CV creation first."
         )
-    
+
     validation_results = session.get("validation_results", {
         "is_valid": True,
         "errors": [],
@@ -593,9 +640,9 @@ def get_cv(session_id: str):
         "can_export": False,
         "completeness_score": 0.0
     })
-    
+
     review_status = session.get("review_status", "pending")
-    
+
     return {
         "schemaVersion": canonical_cv.get("schema_version", "1.1.0"),
         "candidate": canonical_cv.get("candidate", {}),
@@ -605,6 +652,8 @@ def get_cv(session_id: str):
         "certifications": canonical_cv.get("certifications", []),
         "languages": canonical_cv.get("languages", []),
         "additionalSections": canonical_cv.get("additional_sections", {}),
+        "unmapped_attributes": ((canonical_cv.get("unmappedData") or {}).get("attributes") or []),
+        "unmapped_attributes_count": len(((canonical_cv.get("unmappedData") or {}).get("attributes") or [])),
         "metadata": canonical_cv.get("metadata", {}),
         "_validation": validation_results,
         "_review_status": review_status
@@ -654,8 +703,12 @@ def update_cv(session_id: str, request: EditCVRequest):
     can_export = validation_result.can_export
     review_status = "completed" if can_export else "in_progress"
     
-    # 4. Persist canonical CV and validation results to session
+    # 4. Persist canonical CV and validation results to session.
+    # Manual user edits are the ultimate authority — update both canonical_cv and
+    # resolved_canonical so that subsequent preview/export immediately reflects the edit.
     session["canonical_cv"] = canonical_cv_dict
+    session["resolved_canonical"] = canonical_cv_dict
+    session["resolved_at"] = datetime.utcnow().isoformat()
     session["review_status"] = review_status
     session["has_user_edits"] = True
     session["validation_results"] = validation_results_dict
@@ -725,11 +778,15 @@ def review_cv(session_id: str, request: ReviewCVRequest):
     session["has_user_edits"] = True
     session["validation_results"] = validation_dict
     session["validation"] = validation_dict
+    # Save & Validate: produce the frozen resolved_canonical that preview/export will use.
+    # This is the only place where resolved_canonical is generated from flow_stages.
+    conversation_service.resolve_and_freeze_canonical(session)
     conversation_service.save_session(session_id, session)
 
     logger.info(
         f"HITL review saved: can_export={can_export}, review_status={review_status}, "
-        f"errors={len(validation_dict.get('errors', []))}"
+        f"errors={len(validation_dict.get('errors', []))}, "
+        f"resolved_canonical_set={bool(session.get('resolved_canonical'))}"
     )
 
     return {
@@ -904,6 +961,11 @@ def save_cv_changes(request: dict):
     
     # Update canonical_cv directly (preserve structure exactly as provided)
     session["canonical_cv"] = canonical_cv
+    # Manual save edits are the user's final authority — update resolved_canonical too
+    # so that preview/export immediately reflect the saved edit without needing another
+    # Save & Validate round-trip.
+    session["resolved_canonical"] = canonical_cv
+    session["resolved_at"] = datetime.utcnow().isoformat()
     session["has_user_edits"] = True
     conversation_service.save_session(session_id, session)
     

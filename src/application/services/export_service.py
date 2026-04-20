@@ -4,6 +4,7 @@ Handles CV export operations with consistent data structure across all input mod
 """
 
 import logging
+import re
 from typing import Dict, Any, Optional, Tuple
 
 from src.application.services.preview_service import PreviewService
@@ -523,6 +524,9 @@ class ExportService:
         # Format experience field
         if context.get("experience"):
             exp = str(context["experience"]).strip()
+            if exp in {"0", "0.0", "0 years", "0+ years"}:
+                context["experience"] = ""
+                exp = ""
             if not ("year" in exp.lower() or "yr" in exp.lower() or "+" in exp):
                 if exp.replace(".", "").isdigit():
                     context["experience"] = f"{exp}+ years"
@@ -663,7 +667,7 @@ class ExportService:
         return "\n\n".join(sections) if sections else ""
 
     def _format_experience_section(self, work_experience: list) -> str:
-        """Format work experience as text"""
+        """Format work experience as ATS-friendly text from canonical/preview fields."""
         if not work_experience:
             return ""
         
@@ -673,9 +677,34 @@ class ExportService:
                 continue
             
             # Extract fields with multiple possible keys
-            title = exp.get("title") or exp.get("position") or exp.get("role") or ""
-            company = exp.get("company") or exp.get("organization") or ""
+            title = (
+                exp.get("designation")
+                or exp.get("title")
+                or exp.get("position")
+                or exp.get("role")
+                or ""
+            )
+            company = exp.get("organization") or exp.get("company") or ""
+            start_date = (
+                exp.get("employmentStartDate")
+                or exp.get("startDate")
+                or exp.get("start_date")
+                or ""
+            )
+            end_date = (
+                exp.get("employmentEndDate")
+                or exp.get("endDate")
+                or exp.get("end_date")
+                or ""
+            )
+            if exp.get("isCurrentCompany") and not end_date:
+                end_date = "Present"
+
             duration = exp.get("duration") or exp.get("period") or ""
+            if not duration and (start_date or end_date):
+                left = str(start_date).strip()
+                right = str(end_date).strip()
+                duration = f"{left} - {right}".strip(" -")
             location = exp.get("location") or ""
             description = exp.get("description") or exp.get("responsibilities") or ""
             
@@ -702,9 +731,13 @@ class ExportService:
             if description:
                 if isinstance(description, list):
                     for item in description:
-                        exp_text.append(f"• {item}")
+                        cleaned = str(item).strip()
+                        if cleaned:
+                            exp_text.append(f"• {cleaned}")
                 else:
-                    exp_text.append(str(description))
+                    cleaned = str(description).strip()
+                    if cleaned:
+                        exp_text.append(f"• {cleaned}")
             
             if exp_text:
                 formatted.append("\n".join(exp_text))
@@ -712,7 +745,7 @@ class ExportService:
         return "\n\n".join(formatted) if formatted else ""
 
     def _format_projects_section(self, project_experience: list) -> str:
-        """Format project experience as text"""
+        """Format project experience as ATS-friendly labeled blocks."""
         if not project_experience:
             return ""
         
@@ -722,21 +755,55 @@ class ExportService:
                 continue
             
             # Extract fields with multiple possible keys
-            name = proj.get("project_name") or proj.get("name") or proj.get("title") or ""
-            client = proj.get("client") or proj.get("company") or ""
+            name = (
+                proj.get("project_name")
+                or proj.get("projectName")
+                or proj.get("name")
+                or proj.get("title")
+                or ""
+            )
+            client = proj.get("client_name") or proj.get("clientName") or proj.get("client") or proj.get("company") or ""
             role = proj.get("role") or proj.get("position") or ""
             duration = proj.get("duration") or proj.get("period") or ""
-            description = proj.get("description") or proj.get("summary") or ""
-            technologies = proj.get("technologies") or proj.get("tech_stack") or []
-            responsibilities = proj.get("responsibilities") or proj.get("key_achievements") or []
+            if not duration:
+                start = proj.get("durationFrom") or proj.get("startDate") or ""
+                end = proj.get("durationTo") or proj.get("endDate") or ""
+                if proj.get("isCurrentProject") and not end:
+                    end = "Present"
+                if start or end:
+                    duration = f"{str(start).strip()} - {str(end).strip()}".strip(" -")
+            description = proj.get("description") or proj.get("projectDescription") or proj.get("summary") or ""
+            technologies = proj.get("technologies") or proj.get("tech_stack") or proj.get("toolsUsed") or proj.get("environment") or []
+            responsibilities = proj.get("responsibilities") or proj.get("key_achievements") or proj.get("contributions") or []
+            team_size = proj.get("team_size") or proj.get("teamSize") or ""
+
+            # Recover missing labeled fields from noisy extracted text when needed.
+            recovered = self._extract_project_fields_from_text(
+                str(name or ""),
+                str(description or ""),
+            )
+            if recovered.get("name"):
+                name = recovered["name"]
+            if not client and recovered.get("client"):
+                client = recovered["client"]
+            if not duration and recovered.get("duration"):
+                duration = recovered["duration"]
+            if not role and recovered.get("role"):
+                role = recovered["role"]
+            if not team_size and recovered.get("team_size"):
+                team_size = recovered["team_size"]
+            if (not technologies or (isinstance(technologies, list) and not technologies)) and recovered.get("environment"):
+                technologies = recovered["environment"]
+            if recovered.get("description"):
+                description = recovered["description"]
             
             proj_text = []
             
             # Project Name and Client
-            if name and client:
-                proj_text.append(f"Project: {name} | Client: {client}")
-            elif name:
-                proj_text.append(f"Project: {name}")
+            if name:
+                proj_text.append(f"Project Name: {name}")
+            if client:
+                proj_text.append(f"Client: {client}")
             
             # Role and Duration
             details = []
@@ -744,12 +811,14 @@ class ExportService:
                 details.append(f"Role: {role}")
             if duration:
                 details.append(f"Duration: {duration}")
+            if team_size:
+                details.append(f"Team Size: {team_size}")
             if details:
-                proj_text.append(" | ".join(details))
+                proj_text.extend(details)
             
             # Description
             if description:
-                proj_text.append(f"\n{description}")
+                proj_text.append(f"Description: {description}")
             
             # Technologies
             if technologies:
@@ -762,17 +831,86 @@ class ExportService:
             
             # Responsibilities
             if responsibilities:
-                proj_text.append("\nKey Responsibilities:")
+                proj_text.append("Roles and Responsibilities:")
                 if isinstance(responsibilities, list):
                     for resp in responsibilities:
-                        proj_text.append(f"• {resp}")
+                        cleaned = str(resp).strip()
+                        if cleaned:
+                            proj_text.append(f"• {cleaned}")
                 else:
-                    proj_text.append(str(responsibilities))
+                    cleaned = str(responsibilities).strip()
+                    if cleaned:
+                        proj_text.append(f"• {cleaned}")
             
             if proj_text:
                 formatted.append("\n".join(proj_text))
         
         return "\n\n".join(formatted) if formatted else ""
+
+    def _extract_project_fields_from_text(self, raw_name: str, raw_description: str) -> Dict[str, str]:
+        """Recover key project fields from flattened text blobs produced by source extraction."""
+        name = str(raw_name or "").strip()
+        description = str(raw_description or "").strip()
+        combined = " ".join([name, description]).strip()
+        if not combined:
+            return {}
+
+        result: Dict[str, str] = {}
+
+        # Normalize spacing for regex parsing.
+        compact = re.sub(r"\s+", " ", combined)
+
+        def grab(pattern: str) -> str:
+            m = re.search(pattern, compact, flags=re.IGNORECASE)
+            return m.group(1).strip(" ,;:-") if m else ""
+
+        client = grab(r"\bClient\s*[: ]\s*([^\n]+?)(?=\bProject\s*Description\b|\bDuration\b|\bEnvironment\b|\bRole\b|\bContribution\b|\bTeam\s*Size\b|$)")
+        duration = grab(r"\bDuration(?:\s*From\s*\(mm/yy\))?\s*[: ]\s*([^\n]+?)(?=\bTo\s*\(mm/yy\)\b|\bRole\b|\bEnvironment\b|\bContribution\b|\bTeam\s*Size\b|$)")
+        duration_to = grab(r"\bTo\s*\(mm/yy\)\s*[: ]\s*([^\n]+?)(?=\bRole\b|\bEnvironment\b|\bContribution\b|\bTeam\s*Size\b|$)")
+        if duration:
+            duration = re.sub(r"(?i)\bto\s*\(mm/yy\)\s*", " - ", duration)
+            duration = re.sub(r"\s{2,}", " ", duration).strip(" -")
+        if duration and duration_to and duration_to.lower() not in duration.lower():
+            duration = f"{duration} - {duration_to}".strip(" -")
+        environment = grab(r"\bEnvironment\s*[: ]\s*([^\n]+?)(?=\bDuration\b|\bRole\b|\bContribution\b|\bTeam\s*Size\b|$)")
+        role = grab(
+            r"\bRole\s*/?\s*Responsibility\s*[: ]\s*([^\n]+?)"
+            r"(?=\bContributions?\b|\bResponsibilities\b|\bEnvironment\b|\bTeam\s*Size\b|$)"
+        )
+        team_size = grab(r"\bTeam\s*Size\s*[: ]\s*(\d+)")
+
+        clean_name = name
+        if "Project Description" in clean_name:
+            clean_name = clean_name.split("Project Description", 1)[0].strip(" ,;:-")
+        if "Client" in clean_name:
+            clean_name = clean_name.split("Client", 1)[0].strip(" ,;:-")
+        if clean_name.lower().startswith("project:"):
+            clean_name = clean_name.split(":", 1)[1].strip()
+
+        clean_description = description
+        if not clean_description:
+            desc = grab(r"\bProject\s*Description\s*[: ]\s*([^\n]+?)(?=\bEnvironment\b|\bDuration\b|\bRole\b|\bContribution\b|\bTeam\s*Size\b|$)")
+            clean_description = desc
+        else:
+            clean_description = re.sub(r"(?i)^\s*project\s*description\s*[: ]\s*", "", clean_description).strip()
+
+        if clean_name:
+            result["name"] = clean_name
+        if client:
+            result["client"] = client
+        if duration:
+            result["duration"] = duration
+        if environment:
+            result["environment"] = environment
+        if role:
+            role = re.sub(r"(?i)\b(contributions?|responsibilities?)\b.*$", "", role).strip(" ,;:-")
+            result["role"] = role
+        if team_size:
+            result["team_size"] = team_size
+        if clean_description:
+            result["description"] = clean_description
+
+        return result
 
     def _format_education_section(self, education: list) -> str:
         """Format education as text"""
@@ -818,12 +956,53 @@ class ExportService:
         return "\n\n".join(formatted) if formatted else ""
 
     def _format_certifications_section(self, certifications: list) -> str:
-        """Format certifications as text"""
+        """Format certifications in clean ATS-friendly bullet lines."""
         if not certifications:
             return ""
-        
+
+        # Normalize mixed/fragmented inputs from document parsing where
+        # certification names and date tokens may arrive as separate strings.
+        normalized: list = []
+        date_like = re.compile(r"^/?\d{1,2}/\d{1,2}/\d{2,4}$|^/?\d{1,2}/\d{2,4}$")
+        i = 0
+        while i < len(certifications):
+            cert = certifications[i]
+            if isinstance(cert, dict):
+                normalized.append(cert)
+                i += 1
+                continue
+
+            if isinstance(cert, str) and cert.strip():
+                token = cert.strip().lstrip("•").strip()
+                if not token:
+                    i += 1
+                    continue
+
+                if date_like.match(token):
+                    if normalized and isinstance(normalized[-1], dict):
+                        existing = str(normalized[-1].get("year") or "").strip()
+                        normalized[-1]["year"] = f"{existing} - {token}".strip(" -") if existing else token
+                    i += 1
+                    continue
+
+                # Merge split names like "SAS" + "ODI tools" when followed by a date token.
+                if (
+                    i + 1 < len(certifications)
+                    and isinstance(certifications[i + 1], str)
+                    and certifications[i + 1].strip()
+                    and not date_like.match(certifications[i + 1].strip().lstrip("•").strip())
+                    and i + 2 < len(certifications)
+                    and isinstance(certifications[i + 2], str)
+                    and date_like.match(certifications[i + 2].strip().lstrip("•").strip())
+                ):
+                    token = f"{token}, {certifications[i + 1].strip().lstrip('•').strip()}"
+                    i += 1
+
+                normalized.append({"name": token, "year": "", "issuer": ""})
+            i += 1
+
         formatted = []
-        for cert in certifications:
+        for cert in normalized:
             if not isinstance(cert, dict):
                 # Handle string certifications
                 if isinstance(cert, str) and cert.strip():

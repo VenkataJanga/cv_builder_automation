@@ -182,21 +182,32 @@ async def transcribe_audio(
         session = conversation_service.get_session(session_id)
         transcription_result["question"] = new_session.get("question")
 
-    # Step 2: Process through canonical schema pipeline
+    # Step 2: Switch flow if user was previously in a different input flow.
+    # Archives the previous flow stage to prevent cross-flow data bleed.
+    conversation_service.switch_flow(session, conversation_service.FLOW_AUDIO_UPLOAD)
+
+    # Step 3: Process through canonical schema pipeline
     audio_result = audio_cv_service.process_audio_transcript(
         enhanced_transcript=enhanced_transcript,
         existing_canonical_cv=session.get("canonical_cv", {}),
         source_type=SourceType.AUDIO_UPLOAD
     )
 
-    # Step 3: Update session with canonical CV + validation
+    # Step 4: Update session with canonical CV + validation
     logger.info("=" * 80)
     logger.info("SPEECH ROUTER - Updating session with audio results")
     logger.info(f"Session ID: {session_id}")
-    
+
     session["canonical_cv"] = audio_result["canonical_cv"]
     session["validation"] = audio_result["validation"]
     session["validation_results"] = audio_result["validation"]
+    # Register immutable flow stage so preview/export have a stable pipeline snapshot
+    conversation_service.set_flow_stage(
+        session,
+        conversation_service.FLOW_AUDIO_UPLOAD,
+        audio_result["canonical_cv"],
+        source_metadata={"filename": getattr(file, "filename", "")},
+    )
     
     logger.info("Session updated with canonical_cv")
     logger.info(f"  - canonical_cv keys: {list(session['canonical_cv'].keys())}")
@@ -289,21 +300,30 @@ def correct_transcript(
         session = conversation_service.get_session(session_id)
         correction_result["question"] = new_session.get("question")
 
-    # Step 2: Process through canonical schema pipeline
+    # Step 2: Switch flow if user was previously in a different input flow.
+    conversation_service.switch_flow(session, conversation_service.FLOW_AUDIO_RECORD)
+
+    # Step 3: Process through canonical schema pipeline
     audio_result = audio_cv_service.process_audio_transcript(
         enhanced_transcript=enhanced_transcript,
         existing_canonical_cv=session.get("canonical_cv", {}),
         source_type=SourceType.AUDIO_RECORDING  # Corrected transcript treated as recording
     )
 
-    # Step 3: Update session with canonical CV + validation
+    # Step 4: Update session with canonical CV + validation
     logger.info("=" * 80)
     logger.info("SPEECH ROUTER - Updating session with correction results")
     logger.info(f"Session ID: {session_id}")
-    
+
     session["canonical_cv"] = audio_result["canonical_cv"]
     session["validation"] = audio_result["validation"]
     session["validation_results"] = audio_result["validation"]
+    # Register immutable flow stage
+    conversation_service.set_flow_stage(
+        session,
+        conversation_service.FLOW_AUDIO_RECORD,
+        audio_result["canonical_cv"],
+    )
     
     logger.info("Session updated with canonical_cv")
     logger.info(f"  - canonical_cv keys: {list(session['canonical_cv'].keys())}")

@@ -96,3 +96,86 @@ def test_unmapped_data_service_collects_unknown_top_level_keys():
     assert "other_notes" in unmapped
     assert "misc" in unmapped
     assert "personal_details" not in unmapped
+
+
+def test_preserve_unmapped_writes_structured_attributes_and_legacy_bucket():
+    service = UnmappedDataService()
+    canonical = {
+        "unmappedData": {},
+        "sourceSnapshots": {},
+        "mappingWarnings": [],
+    }
+
+    service.preserve_unmapped(
+        canonical_cv=canonical,
+        source="document_upload",
+        key="top_level_fields",
+        value={
+            "preferred_shift": "Night",
+            "legacy_stack": ["COBOL", "Mainframe"],
+        },
+    )
+
+    # Legacy source bucket remains available for existing consumers.
+    assert canonical["unmappedData"]["document_upload"]["top_level_fields"]["preferred_shift"] == "Night"
+
+    # Structured Others contract is also populated.
+    attrs = canonical["unmappedData"].get("attributes") or []
+    assert len(attrs) >= 3
+    labels = {item.get("normalizedLabel") for item in attrs if isinstance(item, dict)}
+    assert "preferred_shift" in labels
+    assert "legacy_stack" in labels
+
+
+def test_preserve_unmapped_attribute_upserts_occurrence_count():
+    service = UnmappedDataService()
+    canonical = {
+        "unmappedData": {},
+        "sourceSnapshots": {},
+        "mappingWarnings": [],
+    }
+
+    service.preserve_unmapped_attribute(
+        canonical_cv=canonical,
+        source="audio_llm_extraction",
+        original_label="Business Unit",
+        extracted_value="Cloud Ops",
+        source_section="summary",
+        source_path="summary.business_unit",
+    )
+    service.preserve_unmapped_attribute(
+        canonical_cv=canonical,
+        source="audio_llm_extraction",
+        original_label="Business Unit",
+        extracted_value="Cloud Ops",
+        source_section="summary",
+        source_path="summary.business_unit",
+    )
+
+    attrs = canonical["unmappedData"].get("attributes") or []
+    assert len(attrs) == 1
+    assert attrs[0]["occurrenceCount"] == 2
+    assert attrs[0]["mappingStatus"] == "unmapped"
+
+
+def test_normalize_legacy_unmapped_data_backfills_attributes():
+    service = UnmappedDataService()
+    canonical = {
+        "unmappedData": {
+            "conversation": {
+                "questionnaire_unmapped_answers": {
+                    "preferred_work_mode": "Hybrid",
+                    "citizenship_status": "OCI",
+                }
+            }
+        },
+        "sourceSnapshots": {},
+        "mappingWarnings": [],
+    }
+
+    migrated = service.normalize_legacy_unmapped_data(canonical)
+    attrs = canonical["unmappedData"].get("attributes") or []
+
+    assert migrated >= 2
+    assert len(attrs) >= 2
+    assert any(item.get("normalizedLabel") == "preferred_work_mode" for item in attrs)
