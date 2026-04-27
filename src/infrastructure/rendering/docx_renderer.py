@@ -144,8 +144,8 @@ class DocxRenderer:
                 # Create from scratch if template not found
                 doc = self._create_template_structure(context)
 
-            # Add page break after header section if document has multiple sections
-            self._add_page_break_after_header(doc, context)
+            # Removed page break after header to prevent unnecessary gaps
+            # self._add_page_break_after_header(doc, context)
 
             # Enforce export header/footer formatting across templates.
             self._apply_export_header_footer(doc)
